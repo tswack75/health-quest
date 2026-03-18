@@ -73,6 +73,6 @@ GitHub will give you a site URL like:
 
 ## Notes
 
-- Your Apple Health import file is processed in the browser.
-- Your food logs and app state are stored in browser storage on that device.
+- Your daily logs, rewards, and app state are stored in browser storage on that device.
+- If you later update the app on GitHub, GitHub Pages republishes it automatically.
 - If you use the app on both your computer and iPhone, the saved data will not automatically sync between them.

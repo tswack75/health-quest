@@ -15,26 +15,28 @@
     <header class="hero">
       <div class="hero-copy">
         <p class="eyebrow">Health Quest</p>
-        <h1>Turn your Apple Health data into a daily game.</h1>
+        <h1>Build your health like a long campaign, not a single perfect day.</h1>
         <p class="hero-text">
-          Import your Apple Health <code>export.xml</code>, earn points for healthy habits,
-          and keep streaks alive without sending your data to a server.
+          Log a few numbers at the end of the day, earn experience, unlock rewards, and watch
+          your weight and body-fat trends move over time.
         </p>
       </div>
-      <div class="hero-actions">
-        <label class="upload-card">
-          <span class="upload-title">Import Apple Health Export</span>
-          <span class="upload-subtitle">Choose <code>export.xml</code> from Apple Health export</span>
-          <input id="file-input" type="file" accept=".xml,text/xml,application/xml">
-        </label>
-        <button id="demo-button" class="secondary-button" type="button">Load Demo Data</button>
+      <div class="hero-side">
+        <div class="hero-card">
+          <div class="hero-card-label">Daily Score Model</div>
+          <div class="hero-card-copy">Steps plus exercise plus food control plus logging consistency equals XP.</div>
+        </div>
+        <div class="hero-card">
+          <div class="hero-card-label">Campaign Theme</div>
+          <div class="hero-card-copy">A steady-builder story about systems, restraint, and momentum.</div>
+        </div>
       </div>
     </header>
 
     <main class="main-grid">
       <section class="panel profile-panel">
         <div class="panel-header">
-          <h2>Your Quest</h2>
+          <h2>Your Profile</h2>
         </div>
         <div class="profile-form">
           <label>
@@ -50,50 +52,100 @@
             <input id="exercise-goal" type="number" min="5" max="180" step="5" value="30">
           </label>
           <label>
-            <span>Sleep goal (hours)</span>
-            <input id="sleep-goal" type="number" min="4" max="12" step="0.5" value="7.5">
+            <span>Weight goal</span>
+            <input id="weight-goal" type="number" min="50" max="500" step="0.1" value="185">
           </label>
           <label>
-            <span>Mindfulness goal (minutes)</span>
-            <input id="mindful-goal" type="number" min="0" max="60" step="5" value="10">
+            <span>Body fat goal (%)</span>
+            <input id="body-fat-goal" type="number" min="3" max="60" step="0.1" value="20">
           </label>
           <button id="save-profile" type="button">Save Goals</button>
         </div>
-        <p id="status-message" class="status-message">Import your Apple Health export to begin.</p>
+        <p id="status-message" class="status-message">Set your targets, then start logging days.</p>
       </section>
 
       <section class="panel summary-panel">
         <div class="panel-header">
           <h2>Adventure Summary</h2>
         </div>
-        <div class="stats-grid" id="summary-stats"></div>
+        <div id="summary-stats" class="stats-grid"></div>
+      </section>
+
+      <section class="panel log-panel">
+        <div class="panel-header">
+          <h2>Daily Log</h2>
+        </div>
+        <div class="daily-form">
+          <label>
+            <span>Date</span>
+            <input id="entry-date" type="date">
+          </label>
+          <label>
+            <span>Steps</span>
+            <input id="entry-steps" type="number" min="0" max="100000" step="100">
+          </label>
+          <label>
+            <span>Exercise minutes</span>
+            <input id="entry-exercise" type="number" min="0" max="300" step="5">
+          </label>
+          <label>
+            <span>Weight</span>
+            <input id="entry-weight" type="number" min="50" max="500" step="0.1">
+          </label>
+          <label>
+            <span>Body fat %</span>
+            <input id="entry-body-fat" type="number" min="3" max="60" step="0.1">
+          </label>
+        </div>
+
+        <div class="food-legend">
+          <span class="food-key"><strong>1</strong> on track</span>
+          <span class="food-key"><strong>2</strong> ok food, portion control</span>
+          <span class="food-key"><strong>3</strong> non controlled food nor portion control</span>
+          <span class="food-key"><strong>4</strong> out of control...stuffed</span>
+        </div>
+
+        <div id="food-log" class="food-log"></div>
+        <button id="save-entry" type="button">Save Daily Entry</button>
       </section>
 
       <section class="panel quest-panel">
         <div class="panel-header">
-          <h2>Today's Quests</h2>
+          <h2>Today's Scorecard</h2>
         </div>
         <div id="quest-list" class="quest-list"></div>
       </section>
 
-      <section class="panel food-panel">
+      <section class="panel chart-panel">
         <div class="panel-header">
-          <h2>Quick Food Log</h2>
+          <h2>Trend Lines</h2>
         </div>
-        <div class="food-legend">
-          <span class="food-key"><strong>0</strong> no calories consumed</span>
-          <span class="food-key"><strong>1</strong> healthy, protein/fiber rich, on track</span>
-          <span class="food-key"><strong>2</strong> okay, but not usual track</span>
-          <span class="food-key"><strong>3</strong> no good, off schedule</span>
-        </div>
-        <div id="food-log" class="food-log"></div>
+        <div id="chart-wrap" class="chart-wrap"></div>
       </section>
 
-      <section class="panel badges-panel">
+      <section class="panel rewards-panel">
         <div class="panel-header">
-          <h2>Badges</h2>
+          <h2>Rewards</h2>
         </div>
-        <div id="badge-list" class="badge-list"></div>
+        <div class="reward-form">
+          <label>
+            <span>Reward name</span>
+            <input id="reward-name" type="text" maxlength="48" placeholder="New shirt, movie night, massage">
+          </label>
+          <label>
+            <span>Unlock level</span>
+            <input id="reward-level" type="number" min="1" max="100" step="1" value="2">
+          </label>
+          <button id="add-reward" type="button">Add Reward</button>
+        </div>
+        <div id="reward-list" class="reward-list"></div>
+      </section>
+
+      <section class="panel story-panel">
+        <div class="panel-header">
+          <h2>Campaign Journal</h2>
+        </div>
+        <div id="story-card" class="story-card"></div>
       </section>
 
       <section class="panel activity-panel">
@@ -101,17 +153,6 @@
           <h2>Recent Days</h2>
         </div>
         <div id="day-list" class="day-list"></div>
-      </section>
-
-      <section class="panel insight-panel">
-        <div class="panel-header">
-          <h2>How It Works</h2>
-        </div>
-        <div class="insight-copy">
-          <p>Points reward consistency across movement, exercise, sleep, and mindfulness.</p>
-          <p>Streaks count days where you complete at least three quests or score 70+.</p>
-          <p>Everything runs locally in your browser and is saved on this device.</p>
-        </div>
       </section>
     </main>
   </div>

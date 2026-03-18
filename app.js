@@ -1,88 +1,89 @@
-const STORAGE_KEY = "health-quest-v1";
-const mealSlots = ["morning", "lunch", "snack", "dinner", "other"];
-const foodOptionLabels = {
-  0: "No calories",
-  1: "On track",
-  2: "Okay",
-  3: "Off schedule",
-};
-const foodScoreMap = {
-  0: 3,
-  1: 4,
-  2: 2,
-  3: 0,
+const STORAGE_KEY = "health-quest-v2";
+const mealSlots = ["morning", "lunch", "afternoon", "dinner", "other"];
+const foodOptions = {
+  1: { label: "On track", points: 8 },
+  2: { label: "OK + portion control", points: 5 },
+  3: { label: "Not controlled", points: 2 },
+  4: { label: "Out of control", points: 0 },
 };
 
 const defaultSettings = {
   displayName: "Adventurer",
   stepGoal: 8000,
   exerciseGoal: 30,
-  sleepGoal: 7.5,
-  mindfulGoal: 10,
+  weightGoal: 185,
+  bodyFatGoal: 20,
 };
 
-const metricConfig = {
-  steps: {
-    types: ["HKQuantityTypeIdentifierStepCount"],
-    aggregator: "sum",
+const storyChapters = [
+  {
+    level: 1,
+    title: "The First Camp",
+    body: "You are not chasing a miracle day. You are building a field camp: one clean log, one honest number, one controlled meal at a time.",
   },
-  exerciseMinutes: {
-    types: ["HKQuantityTypeIdentifierAppleExerciseTime"],
-    aggregator: "sum",
+  {
+    level: 2,
+    title: "The System Builder",
+    body: "Most people wait for motivation. You are building a system instead. The power here is repetition, not drama.",
   },
-  distanceKm: {
-    types: ["HKQuantityTypeIdentifierDistanceWalkingRunning"],
-    aggregator: "sumDistanceKm",
+  {
+    level: 4,
+    title: "The Discipline Forge",
+    body: "Your campaign is shifting from reaction to command. Food choices are becoming planned moves instead of random events.",
   },
-  flights: {
-    types: ["HKQuantityTypeIdentifierFlightsClimbed"],
-    aggregator: "sum",
+  {
+    level: 6,
+    title: "The Quiet Momentum",
+    body: "This is where real change hides: boring days, steady logs, and the refusal to let one rough meal become a rough week.",
   },
-  mindfulMinutes: {
-    types: ["HKCategoryTypeIdentifierMindfulSession"],
-    aggregator: "durationMinutes",
+  {
+    level: 9,
+    title: "The Architect",
+    body: "Your habits are starting to feel structural. You are no longer hoping for a better outcome; you are designing one.",
   },
-  sleepHours: {
-    types: ["HKCategoryTypeIdentifierSleepAnalysis"],
-    aggregator: "sleepHours",
-  },
-};
-
-const badgeDefinitions = [
-  { id: "first_import", title: "First Sync", icon: "1", description: "Import your first Apple Health export." },
-  { id: "week_streak", title: "7-Day Spark", icon: "7", description: "Reach a 7-day healthy streak." },
-  { id: "step_champion", title: "Step Champion", icon: "S", description: "Hit 10,000 steps in a day." },
-  { id: "exercise_hour", title: "Power Hour", icon: "E", description: "Reach 60 exercise minutes in a day." },
-  { id: "sleep_guardian", title: "Sleep Guardian", icon: "Z", description: "Sleep 8 hours in one night." },
-  { id: "mindful_moment", title: "Mindful Moment", icon: "M", description: "Log 15 mindfulness minutes in a day." },
-  { id: "all_rounder", title: "All-Rounder", icon: "A", description: "Complete 4 quests in a single day." },
 ];
 
 let state = loadState();
 
-const fileInput = document.getElementById("file-input");
-const demoButton = document.getElementById("demo-button");
-const saveProfileButton = document.getElementById("save-profile");
-const statusMessage = document.getElementById("status-message");
-const summaryStats = document.getElementById("summary-stats");
-const questList = document.getElementById("quest-list");
-const foodLog = document.getElementById("food-log");
-const badgeList = document.getElementById("badge-list");
-const dayList = document.getElementById("day-list");
-
 const displayNameInput = document.getElementById("display-name");
 const stepGoalInput = document.getElementById("step-goal");
 const exerciseGoalInput = document.getElementById("exercise-goal");
-const sleepGoalInput = document.getElementById("sleep-goal");
-const mindfulGoalInput = document.getElementById("mindful-goal");
+const weightGoalInput = document.getElementById("weight-goal");
+const bodyFatGoalInput = document.getElementById("body-fat-goal");
+const saveProfileButton = document.getElementById("save-profile");
+
+const entryDateInput = document.getElementById("entry-date");
+const entryStepsInput = document.getElementById("entry-steps");
+const entryExerciseInput = document.getElementById("entry-exercise");
+const entryWeightInput = document.getElementById("entry-weight");
+const entryBodyFatInput = document.getElementById("entry-body-fat");
+const foodLog = document.getElementById("food-log");
+const saveEntryButton = document.getElementById("save-entry");
+
+const rewardNameInput = document.getElementById("reward-name");
+const rewardLevelInput = document.getElementById("reward-level");
+const addRewardButton = document.getElementById("add-reward");
+
+const statusMessage = document.getElementById("status-message");
+const summaryStats = document.getElementById("summary-stats");
+const questList = document.getElementById("quest-list");
+const chartWrap = document.getElementById("chart-wrap");
+const rewardList = document.getElementById("reward-list");
+const storyCard = document.getElementById("story-card");
+const dayList = document.getElementById("day-list");
 
 initialize();
 
 function initialize() {
   hydrateSettingsForm();
-  fileInput.addEventListener("change", handleFileUpload);
-  demoButton.addEventListener("click", loadDemoData);
+  entryDateInput.value = getTodayKey();
+  hydrateEntryForm(getSelectedDateKey());
+  renderFoodLog();
+
   saveProfileButton.addEventListener("click", saveProfile);
+  entryDateInput.addEventListener("change", handleDateChange);
+  saveEntryButton.addEventListener("click", saveDailyEntry);
+  addRewardButton.addEventListener("click", addReward);
 
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
@@ -93,33 +94,25 @@ function initialize() {
 
 function loadState() {
   const raw = localStorage.getItem(STORAGE_KEY);
+  const fallback = {
+    settings: { ...defaultSettings },
+    entries: {},
+    rewards: [],
+  };
+
   if (!raw) {
-    return {
-      settings: { ...defaultSettings },
-      foodLogs: {},
-      summary: null,
-      importedAt: null,
-      sourceName: null,
-    };
+    return fallback;
   }
 
   try {
     const parsed = JSON.parse(raw);
     return {
       settings: { ...defaultSettings, ...(parsed.settings || {}) },
-      foodLogs: parsed.foodLogs || {},
-      summary: parsed.summary || null,
-      importedAt: parsed.importedAt || null,
-      sourceName: parsed.sourceName || null,
+      entries: parsed.entries || {},
+      rewards: parsed.rewards || [],
     };
   } catch (error) {
-    return {
-      settings: { ...defaultSettings },
-      foodLogs: {},
-      summary: null,
-      importedAt: null,
-      sourceName: null,
-    };
+    return fallback;
   }
 }
 
@@ -131,8 +124,8 @@ function hydrateSettingsForm() {
   displayNameInput.value = state.settings.displayName;
   stepGoalInput.value = state.settings.stepGoal;
   exerciseGoalInput.value = state.settings.exerciseGoal;
-  sleepGoalInput.value = state.settings.sleepGoal;
-  mindfulGoalInput.value = state.settings.mindfulGoal;
+  weightGoalInput.value = state.settings.weightGoal;
+  bodyFatGoalInput.value = state.settings.bodyFatGoal;
 }
 
 function saveProfile() {
@@ -140,140 +133,100 @@ function saveProfile() {
     displayName: (displayNameInput.value || defaultSettings.displayName).trim().slice(0, 24) || defaultSettings.displayName,
     stepGoal: clampNumber(stepGoalInput.value, 1000, 30000, defaultSettings.stepGoal),
     exerciseGoal: clampNumber(exerciseGoalInput.value, 5, 180, defaultSettings.exerciseGoal),
-    sleepGoal: clampNumber(sleepGoalInput.value, 4, 12, defaultSettings.sleepGoal),
-    mindfulGoal: clampNumber(mindfulGoalInput.value, 0, 60, defaultSettings.mindfulGoal),
+    weightGoal: clampNumber(weightGoalInput.value, 50, 500, defaultSettings.weightGoal),
+    bodyFatGoal: clampNumber(bodyFatGoalInput.value, 3, 60, defaultSettings.bodyFatGoal),
   };
-
-  if (state.summary) {
-    state.summary = computeGameSummary(state.summary.days, state.settings, state.foodLogs);
-  }
 
   saveState();
   render();
-  setStatus("Goals saved on this device.");
+  setStatus("Goals saved.");
 }
 
-function clampNumber(value, min, max, fallback) {
-  const parsed = Number(value);
-  if (Number.isNaN(parsed)) {
-    return fallback;
-  }
-  return Math.min(max, Math.max(min, parsed));
+function handleDateChange() {
+  hydrateEntryForm(getSelectedDateKey());
+  renderFoodLog();
+  render();
 }
 
-async function handleFileUpload(event) {
-  const [file] = event.target.files || [];
-  if (!file) {
+function saveDailyEntry() {
+  const dateKey = getSelectedDateKey();
+  const existing = getEntry(dateKey);
+
+  state.entries[dateKey] = {
+    ...existing,
+    date: dateKey,
+    steps: clampNumber(entryStepsInput.value, 0, 100000, 0),
+    exerciseMinutes: clampNumber(entryExerciseInput.value, 0, 300, 0),
+    weight: parseOptionalNumber(entryWeightInput.value),
+    bodyFat: parseOptionalNumber(entryBodyFatInput.value),
+    food: readFoodForm(dateKey),
+  };
+
+  saveState();
+  render();
+  setStatus(`Saved entry for ${formatDisplayDate(dateKey)}.`);
+}
+
+function addReward() {
+  const name = rewardNameInput.value.trim();
+  const unlockLevel = clampNumber(rewardLevelInput.value, 1, 100, 1);
+
+  if (!name) {
+    setStatus("Add a reward name first.");
     return;
   }
 
-  if (!file.name.toLowerCase().endsWith(".xml")) {
-    setStatus("This web app currently supports Apple Health export.xml files. If Apple gave you a zip, unzip it first and choose export.xml.");
-    return;
-  }
+  state.rewards.push({
+    id: createId(),
+    name,
+    unlockLevel,
+    claimed: false,
+  });
 
-  setStatus(`Reading ${file.name}...`);
-
-  try {
-    const xmlText = await file.text();
-    const days = parseHealthXml(xmlText);
-    if (!days.length) {
-      throw new Error("No supported Apple Health records were found.");
-    }
-    state.summary = computeGameSummary(days, state.settings, state.foodLogs);
-    state.importedAt = new Date().toISOString();
-    state.sourceName = file.name;
-    saveState();
-    render();
-    setStatus(`Imported ${days.length} day${days.length === 1 ? "" : "s"} from ${file.name}.`);
-  } catch (error) {
-    setStatus(error.message || "Import failed. Please try a different export.xml file.");
-  } finally {
-    fileInput.value = "";
-  }
+  rewardNameInput.value = "";
+  rewardLevelInput.value = "2";
+  saveState();
+  render();
+  setStatus(`Added reward "${name}".`);
 }
 
-function parseHealthXml(xmlText) {
-  const parser = new DOMParser();
-  const xml = parser.parseFromString(xmlText, "application/xml");
-  const parseError = xml.querySelector("parsererror");
-  if (parseError) {
-    throw new Error("That file could not be parsed as Apple Health XML.");
-  }
-
-  const dailyMap = new Map();
-  const records = Array.from(xml.getElementsByTagName("Record"));
-
-  for (const record of records) {
-    const type = record.getAttribute("type");
-    const metricName = getMetricName(type);
-    if (!metricName) {
-      continue;
-    }
-
-    const startDate = record.getAttribute("startDate");
-    const endDate = record.getAttribute("endDate");
-    const value = Number(record.getAttribute("value") || "0");
-    const unit = record.getAttribute("unit") || "";
-    const dayKey = getDayKey(startDate);
-
-    if (!dayKey) {
-      continue;
-    }
-
-    if (!dailyMap.has(dayKey)) {
-      dailyMap.set(dayKey, createEmptyDay(dayKey));
-    }
-
-    const day = dailyMap.get(dayKey);
-
-    switch (metricConfig[metricName].aggregator) {
-      case "sum":
-        day[metricName] += Number.isFinite(value) ? value : 0;
-        break;
-      case "sumDistanceKm":
-        day[metricName] += convertDistanceToKm(value, unit);
-        break;
-      case "durationMinutes":
-        day[metricName] += getDurationMinutes(startDate, endDate);
-        break;
-      case "sleepHours":
-        if (isAsleepCategory(record.getAttribute("value"))) {
-          day[metricName] += getDurationMinutes(startDate, endDate) / 60;
-        }
-        break;
-      default:
-        break;
-    }
-  }
-
-  return Array.from(dailyMap.values())
-    .map((day) => ({
-      ...day,
-      steps: Math.round(day.steps),
-      exerciseMinutes: roundToOne(day.exerciseMinutes),
-      distanceKm: roundToOne(day.distanceKm),
-      flights: Math.round(day.flights),
-      mindfulMinutes: roundToOne(day.mindfulMinutes),
-      sleepHours: roundToOne(day.sleepHours),
-    }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+function toggleRewardClaim(rewardId) {
+  state.rewards = state.rewards.map((reward) =>
+    reward.id === rewardId ? { ...reward, claimed: !reward.claimed } : reward
+  );
+  saveState();
+  render();
 }
 
-function getMetricName(type) {
-  return Object.keys(metricConfig).find((metric) => metricConfig[metric].types.includes(type)) || null;
+function createId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `reward-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function createEmptyDay(dayKey) {
+function hydrateEntryForm(dateKey) {
+  const entry = getEntry(dateKey);
+  entryDateInput.value = dateKey;
+  entryStepsInput.value = entry.steps || "";
+  entryExerciseInput.value = entry.exerciseMinutes || "";
+  entryWeightInput.value = entry.weight ?? "";
+  entryBodyFatInput.value = entry.bodyFat ?? "";
+}
+
+function getEntry(dateKey) {
   return {
-    date: dayKey,
+    date: dateKey,
     steps: 0,
     exerciseMinutes: 0,
-    distanceKm: 0,
-    flights: 0,
-    mindfulMinutes: 0,
-    sleepHours: 0,
+    weight: null,
+    bodyFat: null,
     food: createEmptyFoodEntry(),
+    ...(state.entries[dateKey] || {}),
+    food: {
+      ...createEmptyFoodEntry(),
+      ...((state.entries[dateKey] || {}).food || {}),
+    },
   };
 }
 
@@ -281,175 +234,327 @@ function createEmptyFoodEntry() {
   return {
     morning: null,
     lunch: null,
-    snack: null,
+    afternoon: null,
     dinner: null,
     other: null,
   };
 }
 
-function getDayKey(dateString) {
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) {
-    return null;
+function readFoodForm(dateKey) {
+  const entry = getEntry(dateKey);
+  const food = { ...entry.food };
+  for (const slot of mealSlots) {
+    const selected = foodLog.querySelector(`input[name="food-${slot}"]:checked`);
+    food[slot] = selected ? Number(selected.value) : 1;
   }
-  return date.toLocaleDateString("en-CA");
+  return food;
 }
 
-function convertDistanceToKm(value, unit) {
-  if (!Number.isFinite(value)) {
-    return 0;
+function renderFoodLog() {
+  const savedFood = getEntry(getSelectedDateKey()).food;
+  const food = mealSlots.reduce((accumulator, slot) => {
+    accumulator[slot] = savedFood[slot] ?? 1;
+    return accumulator;
+  }, {});
+
+  foodLog.innerHTML = mealSlots
+    .map((slot) => `
+      <article class="food-row">
+        <div class="food-label">${escapeHtml(capitalize(slot))}</div>
+        <div class="food-options">
+          ${Object.entries(foodOptions).map(([value]) => `
+            <label class="food-option ${Number(value) === food[slot] ? "active" : ""}">
+              <input
+                type="radio"
+                name="food-${escapeHtml(slot)}"
+                value="${value}"
+                ${Number(value) === food[slot] ? "checked" : ""}
+              >
+              <span>${value}</span>
+            </label>
+          `).join("")}
+        </div>
+      </article>
+    `)
+    .join("");
+
+  syncFoodOptionClasses();
+
+  for (const input of foodLog.querySelectorAll('input[type="radio"]')) {
+    input.addEventListener("change", syncFoodOptionClasses);
   }
-  const normalized = String(unit || "").toLowerCase();
-  if (normalized.includes("mi")) {
-    return value * 1.60934;
-  }
-  if (normalized.includes("m") && !normalized.includes("km")) {
-    return value / 1000;
-  }
-  return value;
 }
 
-function getDurationMinutes(startDateString, endDateString) {
-  const startDate = new Date(startDateString);
-  const endDate = new Date(endDateString);
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-    return 0;
-  }
-  return Math.max(0, (endDate.getTime() - startDate.getTime()) / 60000);
+function render() {
+  const summary = computeSummary();
+  renderSummary(summary);
+  renderScorecard(summary.today, summary);
+  renderCharts(summary.timeline);
+  renderRewards(summary);
+  renderStory(summary);
+  renderRecentDays(summary.timeline);
 }
 
-function isAsleepCategory(value) {
-  return ["HKCategoryValueSleepAnalysisAsleep", "HKCategoryValueSleepAnalysisAsleepCore", "HKCategoryValueSleepAnalysisAsleepDeep", "HKCategoryValueSleepAnalysisAsleepREM", "1", "3", "4", "5"].includes(String(value));
-}
+function computeSummary() {
+  const timeline = Object.values(state.entries)
+    .map((entry) => scoreDay(entry))
+    .sort((a, b) => a.date.localeCompare(b.date));
 
-function computeGameSummary(days, settings, foodLogs = {}) {
-  const timelineDays = fillDateGaps(mergeFoodLogsIntoDays(days, foodLogs));
-  const enrichedDays = timelineDays.map((day) => enrichDay(day, settings));
-  const scoredDays = enrichedDays.filter((day) => day.totalScore > 0 || day.questCount > 0);
-  const totalScore = scoredDays.reduce((sum, day) => sum + day.totalScore, 0);
-  const currentStreak = calculateCurrentStreak(enrichedDays);
-  const bestStreak = calculateBestStreak(enrichedDays);
-  const level = Math.max(1, Math.floor(totalScore / 500) + 1);
-  const todayKey = getDayKey(new Date().toISOString());
-  const today = enrichedDays.find((day) => day.date === todayKey) || enrichedDays[enrichedDays.length - 1] || enrichDay(createEmptyDay(todayKey), settings);
-  const badges = computeBadges(scoredDays, currentStreak, bestStreak);
+  const totalXp = timeline.reduce((sum, day) => sum + day.totalScore + day.bonusXp, 0);
+  const level = Math.max(1, Math.floor(totalXp / 250) + 1);
+  const streak = calculateStreak(timeline);
+  const bestStreak = calculateBestStreak(timeline);
+  const goalStatus = getGoalStatus(timeline);
+  const rewards = state.rewards.map((reward) => ({
+    ...reward,
+    unlocked: level >= reward.unlockLevel,
+  }));
 
   return {
-    generatedAt: new Date().toISOString(),
-    days,
-    enrichedDays,
-    totalScore,
-    currentStreak,
-    bestStreak,
+    timeline,
+    totalXp,
     level,
-    activeDays: scoredDays.length,
-    today,
-    badges,
+    streak,
+    bestStreak,
+    today: scoreDay(getEntry(getSelectedDateKey())),
+    goalStatus,
+    rewards,
   };
 }
 
-function fillDateGaps(days) {
-  if (!days.length) {
-    return [];
-  }
-
-  const dayMap = new Map(days.map((day) => [day.date, day]));
-  const startDate = new Date(`${days[0].date}T12:00:00`);
-  const endDate = new Date(`${days[days.length - 1].date}T12:00:00`);
-  const filled = [];
-  const cursor = new Date(startDate);
-
-  while (cursor <= endDate) {
-    const key = getDayKey(cursor.toISOString());
-    filled.push(dayMap.get(key) || createEmptyDay(key));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
-  return filled;
-}
-
-function mergeFoodLogsIntoDays(days, foodLogs) {
-  const mergedMap = new Map(days.map((day) => [day.date, { ...createEmptyDay(day.date), ...day, food: { ...createEmptyFoodEntry(), ...(day.food || {}) } }]));
-
-  for (const [dateKey, foodEntry] of Object.entries(foodLogs || {})) {
-    const current = mergedMap.get(dateKey) || createEmptyDay(dateKey);
-    mergedMap.set(dateKey, {
-      ...current,
-      food: {
-        ...createEmptyFoodEntry(),
-        ...(current.food || {}),
-        ...(foodEntry || {}),
-      },
-    });
-  }
-
-  return Array.from(mergedMap.values()).sort((a, b) => a.date.localeCompare(b.date));
-}
-
-function enrichDay(day, settings) {
-  const food = { ...createEmptyFoodEntry(), ...(day.food || {}) };
-  const foodTrackCount = mealSlots.filter((slot) => food[slot] === 0 || food[slot] === 1).length;
-  const foodLoggedCount = mealSlots.filter((slot) => food[slot] !== null && food[slot] !== undefined).length;
-  const foodScore = mealSlots.reduce((sum, slot) => {
-    const rating = food[slot];
-    return sum + (rating in foodScoreMap ? foodScoreMap[rating] : 0);
-  }, 0);
-
-  const quests = [
-    buildQuest("Steps", day.steps, settings.stepGoal, "steps"),
-    buildQuest("Exercise", day.exerciseMinutes, settings.exerciseGoal, "min"),
-    buildQuest("Sleep", day.sleepHours, settings.sleepGoal, "hr"),
-    buildQuest("Mindfulness", day.mindfulMinutes, settings.mindfulGoal, "min"),
-    buildQuest("Distance", day.distanceKm, 5, "km"),
-    buildQuest("Food Rhythm", foodTrackCount, 4, "wins"),
-  ];
-
-  const totalScore =
-    scoreRatio(day.steps, settings.stepGoal, 35) +
-    scoreRatio(day.exerciseMinutes, settings.exerciseGoal, 25) +
-    scoreRatio(day.sleepHours, settings.sleepGoal, 20) +
-    scoreRatio(day.mindfulMinutes, Math.max(settings.mindfulGoal, 1), 10) +
-    scoreRatio(day.distanceKm, 5, 5) +
-    scoreRatio(day.flights, 10, 5) +
-    foodScore;
-
-  const questCount = quests.filter((quest) => quest.complete).length;
-  const successDay = totalScore >= 70 || questCount >= 3;
+function scoreDay(entry) {
+  const food = { ...createEmptyFoodEntry(), ...(entry.food || {}) };
+  const stepPoints = Math.round(Math.min(1, (entry.steps || 0) / state.settings.stepGoal) * 30);
+  const exercisePoints = Math.round(Math.min(1, (entry.exerciseMinutes || 0) / state.settings.exerciseGoal) * 20);
+  const foodPoints = mealSlots.reduce((sum, slot) => sum + (food[slot] ? foodOptions[food[slot]].points : 0), 0);
+  const loggingPoints = (entry.weight != null ? 5 : 0) + (entry.bodyFat != null ? 5 : 0);
+  const totalScore = stepPoints + exercisePoints + foodPoints + loggingPoints;
+  const successDay = totalScore >= 70;
+  const bonusXp = getGoalBonus(entry);
 
   return {
-    ...day,
+    ...entry,
     food,
-    foodTrackCount,
-    foodLoggedCount,
-    foodScore,
-    quests,
-    questCount,
+    stepPoints,
+    exercisePoints,
+    foodPoints,
+    loggingPoints,
     totalScore,
     successDay,
+    bonusXp,
+    quests: [
+      { title: "Steps", points: stepPoints },
+      { title: "Exercise", points: exercisePoints },
+      { title: "Food Control", points: foodPoints },
+      { title: "Body Metrics", points: loggingPoints },
+    ],
   };
 }
 
-function buildQuest(title, actual, goal, unit) {
-  const safeGoal = Math.max(goal, 1);
-  const progress = Math.min(1, actual / safeGoal);
-  return {
-    title,
-    actual,
-    goal,
-    unit,
-    progress,
-    complete: actual >= goal,
-  };
-}
-
-function scoreRatio(actual, goal, maxScore) {
-  if (goal <= 0) {
-    return maxScore;
+function syncFoodOptionClasses() {
+  for (const option of foodLog.querySelectorAll(".food-option")) {
+    const input = option.querySelector("input");
+    option.classList.toggle("active", Boolean(input && input.checked));
   }
-  return Math.round(Math.min(1, actual / goal) * maxScore);
 }
 
-function calculateCurrentStreak(days) {
+function getGoalBonus(entry) {
+  let bonus = 0;
+  if (entry.weight != null && entry.weight <= state.settings.weightGoal) {
+    bonus += 50;
+  }
+  if (entry.bodyFat != null && entry.bodyFat <= state.settings.bodyFatGoal) {
+    bonus += 50;
+  }
+  return bonus;
+}
+
+function getGoalStatus(timeline) {
+  const latestWithWeight = [...timeline].reverse().find((day) => day.weight != null) || null;
+  const latestWithBodyFat = [...timeline].reverse().find((day) => day.bodyFat != null) || null;
+
+  return {
+    weightReached: Boolean(latestWithWeight && latestWithWeight.weight <= state.settings.weightGoal),
+    bodyFatReached: Boolean(latestWithBodyFat && latestWithBodyFat.bodyFat <= state.settings.bodyFatGoal),
+    latestWeight: latestWithWeight?.weight ?? null,
+    latestBodyFat: latestWithBodyFat?.bodyFat ?? null,
+  };
+}
+
+function renderSummary(summary) {
+  const avgScore = summary.timeline.length
+    ? Math.round(summary.timeline.reduce((sum, day) => sum + day.totalScore, 0) / summary.timeline.length)
+    : 0;
+
+  summaryStats.innerHTML = [
+    statCard(`Level ${summary.level}`, `${summary.totalXp.toLocaleString()} XP`, `${state.settings.displayName}'s total campaign experience`),
+    statCard("Current Streak", `${summary.streak} day${summary.streak === 1 ? "" : "s"}`, `Best streak: ${summary.bestStreak}`),
+    statCard("Today's Score", `${summary.today.totalScore} pts`, `${summary.today.bonusXp} bonus XP from goals`),
+    statCard("Average Day", `${avgScore} pts`, `${summary.timeline.length} logged day${summary.timeline.length === 1 ? "" : "s"}`),
+  ].join("");
+}
+
+function renderScorecard(day, summary) {
+  const foodPattern = mealSlots
+    .map((slot) => `${capitalize(slot)} ${day.food[slot] ?? "-"}`)
+    .join(" | ");
+  const goalLines = [
+    summary.goalStatus.latestWeight != null
+      ? `Weight: ${summary.goalStatus.latestWeight} / goal ${state.settings.weightGoal}`
+      : `Weight goal: ${state.settings.weightGoal}`,
+    summary.goalStatus.latestBodyFat != null
+      ? `Body fat: ${summary.goalStatus.latestBodyFat}% / goal ${state.settings.bodyFatGoal}%`
+      : `Body fat goal: ${state.settings.bodyFatGoal}%`,
+  ];
+
+  questList.innerHTML = `
+    <article class="quest-card complete">
+      <div class="quest-top">
+        <div class="quest-title">${escapeHtml(formatDisplayDate(day.date))}</div>
+        <div class="quest-meta">${day.totalScore} pts + ${day.bonusXp} bonus XP</div>
+      </div>
+      <div class="score-breakdown">
+        ${day.quests.map((quest) => `
+          <div class="score-row">
+            <span>${escapeHtml(quest.title)}</span>
+            <span>${quest.points} pts</span>
+          </div>
+        `).join("")}
+      </div>
+      <div class="food-summary-line">Food pattern: ${foodPattern}</div>
+      <div class="goal-lines">${goalLines.map((line) => `<div>${escapeHtml(line)}</div>`).join("")}</div>
+    </article>
+  `;
+}
+
+function renderCharts(timeline) {
+  const weightDays = timeline.filter((day) => day.weight != null);
+  const bodyFatDays = timeline.filter((day) => day.bodyFat != null);
+
+  chartWrap.innerHTML = `
+    ${renderLineChart("Weight", weightDays, "weight", state.settings.weightGoal)}
+    ${renderLineChart("Body Fat %", bodyFatDays, "bodyFat", state.settings.bodyFatGoal)}
+  `;
+}
+
+function renderLineChart(title, data, key, goal) {
+  if (!data.length) {
+    return `<div class="empty-state">${escapeHtml(title)} graph appears once you log at least one value.</div>`;
+  }
+
+  const width = 320;
+  const height = 160;
+  const padding = 18;
+  const values = data.map((item) => item[key]);
+  const min = Math.min(...values, goal);
+  const max = Math.max(...values, goal);
+  const range = Math.max(1, max - min);
+
+  const points = data.map((item, index) => {
+    const x = padding + (index * (width - padding * 2)) / Math.max(1, data.length - 1);
+    const y = height - padding - ((item[key] - min) / range) * (height - padding * 2);
+    return `${x},${y}`;
+  }).join(" ");
+
+  const goalY = height - padding - ((goal - min) / range) * (height - padding * 2);
+
+  return `
+    <div class="chart-card">
+      <div class="chart-title">${escapeHtml(title)}</div>
+      <svg viewBox="0 0 ${width} ${height}" class="trend-chart" role="img" aria-label="${escapeHtml(title)} trend">
+        <line x1="${padding}" y1="${goalY}" x2="${width - padding}" y2="${goalY}" class="goal-line"></line>
+        <polyline points="${points}" class="trend-line"></polyline>
+        ${data.map((item, index) => {
+          const x = padding + (index * (width - padding * 2)) / Math.max(1, data.length - 1);
+          const y = height - padding - ((item[key] - min) / range) * (height - padding * 2);
+          return `<circle cx="${x}" cy="${y}" r="4" class="trend-point"></circle>`;
+        }).join("")}
+      </svg>
+      <div class="chart-meta">Goal line: ${goal}</div>
+    </div>
+  `;
+}
+
+function renderRewards(summary) {
+  if (!summary.rewards.length) {
+    rewardList.innerHTML = `<div class="empty-state">Add rewards you can unlock at specific levels.</div>`;
+    return;
+  }
+
+  rewardList.innerHTML = summary.rewards
+    .map((reward) => `
+      <article class="reward-card ${reward.unlocked ? "unlocked" : "locked"}">
+        <div>
+          <div class="reward-title">${escapeHtml(reward.name)}</div>
+          <div class="reward-meta">Unlocks at level ${reward.unlockLevel}</div>
+        </div>
+        <button
+          type="button"
+          class="reward-button"
+          data-reward-id="${escapeHtml(reward.id)}"
+          ${reward.unlocked ? "" : "disabled"}
+        >${reward.claimed ? "Claimed" : reward.unlocked ? "Claim Reward" : "Locked"}</button>
+      </article>
+    `)
+    .join("");
+
+  for (const button of rewardList.querySelectorAll(".reward-button")) {
+    button.addEventListener("click", (event) => toggleRewardClaim(event.currentTarget.dataset.rewardId));
+  }
+}
+
+function renderStory(summary) {
+  const chapter = [...storyChapters].reverse().find((item) => summary.level >= item.level) || storyChapters[0];
+  const goalRewardText = [
+    summary.goalStatus.weightReached ? "Weight goal reached: the caravan moves lighter." : "Weight goal still ahead: keep the march measured.",
+    summary.goalStatus.bodyFatReached ? "Body-fat goal reached: your armor fits closer." : "Body-fat goal still ahead: tighten the pattern, not your emotions.",
+  ];
+
+  storyCard.innerHTML = `
+    <div class="story-kicker">Chapter for level ${summary.level}</div>
+    <h3>${escapeHtml(chapter.title)}</h3>
+    <p>${escapeHtml(chapter.body)}</p>
+    <p>The story is built around what I know so far: you like practical systems, straightforward tracking, and tools that make real life easier. We can later rewrite this around a setting you actually love.</p>
+    <div class="goal-lines">${goalRewardText.map((line) => `<div>${escapeHtml(line)}</div>`).join("")}</div>
+  `;
+}
+
+function renderRecentDays(timeline) {
+  if (!timeline.length) {
+    dayList.innerHTML = `<div class="empty-state">Save your first day to start the campaign log.</div>`;
+    return;
+  }
+
+  dayList.innerHTML = [...timeline].reverse().slice(0, 12)
+    .map((day) => `
+      <article class="day-card">
+        <div class="day-top">
+          <div class="day-title">${escapeHtml(formatDisplayDate(day.date))}</div>
+          <div class="day-meta">${day.totalScore} pts${day.bonusXp ? ` + ${day.bonusXp} bonus XP` : ""}</div>
+        </div>
+        <div class="metric-row">
+          <span class="metric-pill">${day.steps || 0} steps</span>
+          <span class="metric-pill">${day.exerciseMinutes || 0} min exercise</span>
+          <span class="metric-pill">Food ${day.foodPoints}/40</span>
+          <span class="metric-pill">${day.weight != null ? `${day.weight} lb` : "No weight"}</span>
+          <span class="metric-pill">${day.bodyFat != null ? `${day.bodyFat}% fat` : "No body fat"}</span>
+        </div>
+      </article>
+    `)
+    .join("");
+}
+
+function statCard(label, value, detail) {
+  return `
+    <article class="stat-card">
+      <div class="stat-label">${escapeHtml(label)}</div>
+      <div class="stat-value">${escapeHtml(value)}</div>
+      <div class="stat-detail">${escapeHtml(detail)}</div>
+    </article>
+  `;
+}
+
+function calculateStreak(days) {
   let streak = 0;
   for (let index = days.length - 1; index >= 0; index -= 1) {
     if (!days[index].successDay) {
@@ -470,208 +575,42 @@ function calculateBestStreak(days) {
   return best;
 }
 
-function computeBadges(days, currentStreak, bestStreak) {
-  const unlocked = new Set();
-  if (days.length) {
-    unlocked.add("first_import");
-  }
-  if (Math.max(currentStreak, bestStreak) >= 7) {
-    unlocked.add("week_streak");
-  }
-  if (days.some((day) => day.steps >= 10000)) {
-    unlocked.add("step_champion");
-  }
-  if (days.some((day) => day.exerciseMinutes >= 60)) {
-    unlocked.add("exercise_hour");
-  }
-  if (days.some((day) => day.sleepHours >= 8)) {
-    unlocked.add("sleep_guardian");
-  }
-  if (days.some((day) => day.mindfulMinutes >= 15)) {
-    unlocked.add("mindful_moment");
-  }
-  if (days.some((day) => day.questCount >= 4)) {
-    unlocked.add("all_rounder");
-  }
-
-  return badgeDefinitions.map((badge) => ({
-    ...badge,
-    unlocked: unlocked.has(badge.id),
-  }));
+function getSelectedDateKey() {
+  return entryDateInput.value || getTodayKey();
 }
 
-function render() {
-  hydrateSettingsForm();
-  renderSummary();
-  renderQuests();
-  renderFoodLog();
-  renderBadges();
-  renderDays();
+function getTodayKey() {
+  const date = new Date();
+  const offset = date.getTimezoneOffset();
+  const localDate = new Date(date.getTime() - offset * 60000);
+  return localDate.toISOString().slice(0, 10);
 }
 
-function renderSummary() {
-  if (!state.summary) {
-    summaryStats.innerHTML = `<div class="empty-state">No quest data yet. Import Apple Health <code>export.xml</code> to unlock your dashboard.</div>`;
-    return;
+function clampNumber(value, min, max, fallback) {
+  const parsed = Number(value);
+  if (Number.isNaN(parsed)) {
+    return fallback;
   }
-
-  const { totalScore, currentStreak, bestStreak, level, activeDays, today } = state.summary;
-  const avgScore = activeDays ? Math.round(totalScore / activeDays) : 0;
-
-  summaryStats.innerHTML = [
-    statCard(`Level ${level}`, `${totalScore.toLocaleString()} XP`, `${state.settings.displayName}'s lifetime health score`),
-    statCard("Current Streak", `${currentStreak} day${currentStreak === 1 ? "" : "s"}`, `Best streak: ${bestStreak}`),
-    statCard("Today", `${today.totalScore} pts`, `${today.questCount} quests complete`),
-    statCard("Average Day", `${avgScore} pts`, `${activeDays} tracked day${activeDays === 1 ? "" : "s"}`),
-  ].join("");
+  return Math.min(max, Math.max(min, parsed));
 }
 
-function statCard(label, value, detail) {
-  return `
-    <article class="stat-card">
-      <div class="stat-label">${escapeHtml(label)}</div>
-      <div class="stat-value">${escapeHtml(value)}</div>
-      <div class="stat-detail">${escapeHtml(detail)}</div>
-    </article>
-  `;
-}
-
-function renderQuests() {
-  if (!state.summary) {
-    questList.innerHTML = `<div class="empty-state">Your next quests appear after you import data.</div>`;
-    return;
+function parseOptionalNumber(value) {
+  if (value === "" || value == null) {
+    return null;
   }
-
-  questList.innerHTML = state.summary.today.quests
-    .map((quest) => `
-      <article class="quest-card ${quest.complete ? "complete" : ""}">
-        <div class="quest-top">
-          <div class="quest-title">${escapeHtml(quest.title)}</div>
-          <div class="quest-meta">${formatMetric(quest.actual, quest.unit)} / ${formatMetric(quest.goal, quest.unit)}</div>
-        </div>
-        <div class="progress-bar"><span style="width: ${Math.round(quest.progress * 100)}%"></span></div>
-      </article>
-    `)
-    .join("");
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
-function renderBadges() {
-  const badges = state.summary?.badges || badgeDefinitions.map((badge) => ({ ...badge, unlocked: false }));
-  badgeList.innerHTML = badges
-    .map((badge) => `
-      <article class="badge-card ${badge.unlocked ? "" : "locked"}">
-        <div class="badge-row">
-          <div class="badge-icon">${escapeHtml(badge.icon)}</div>
-          <div>
-            <div class="badge-title">${escapeHtml(badge.title)}</div>
-            <div class="badge-meta">${escapeHtml(badge.description)}</div>
-          </div>
-        </div>
-      </article>
-    `)
-    .join("");
+function formatDisplayDate(dateKey) {
+  const date = new Date(`${dateKey}T12:00:00`);
+  return Number.isNaN(date.getTime())
+    ? dateKey
+    : date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
-function renderFoodLog() {
-  const todayKey = getDayKey(new Date().toISOString());
-  const todayFood = {
-    ...createEmptyFoodEntry(),
-    ...(state.foodLogs[todayKey] || state.summary?.today?.food || {}),
-  };
-
-  foodLog.innerHTML = mealSlots
-    .map((slot) => `
-      <article class="food-row">
-        <div class="food-label">${escapeHtml(capitalize(slot))}</div>
-        <div>
-          <div class="food-options">
-            ${[0, 1, 2, 3].map((option) => `
-              <button
-                type="button"
-                class="food-option ${todayFood[slot] === option ? "active" : ""}"
-                data-slot="${escapeHtml(slot)}"
-                data-value="${option}"
-              >${option}</button>
-            `).join("")}
-          </div>
-          <div class="food-summary">${escapeHtml(foodOptionLabels[todayFood[slot]] || "Not logged yet")}</div>
-        </div>
-      </article>
-    `)
-    .join("");
-
-  for (const button of foodLog.querySelectorAll(".food-option")) {
-    button.addEventListener("click", handleFoodLogClick);
-  }
-}
-
-function handleFoodLogClick(event) {
-  const slot = event.currentTarget.dataset.slot;
-  const value = Number(event.currentTarget.dataset.value);
-  const todayKey = getDayKey(new Date().toISOString());
-  const currentFood = {
-    ...createEmptyFoodEntry(),
-    ...(state.foodLogs[todayKey] || {}),
-  };
-
-  currentFood[slot] = value;
-  state.foodLogs[todayKey] = currentFood;
-  state.summary = computeGameSummary(state.summary?.days || [], state.settings, state.foodLogs);
-  saveState();
-  render();
-  setStatus(`${capitalize(slot)} food log updated for ${formatDisplayDate(todayKey)}.`);
-}
-
-function renderDays() {
-  if (!state.summary) {
-    dayList.innerHTML = `<div class="empty-state">Recent activity cards will show up here after import.</div>`;
-    return;
-  }
-
-  const recentDays = [...state.summary.enrichedDays].reverse().slice(0, 10);
-  dayList.innerHTML = recentDays
-    .map((day) => `
-      <article class="day-card">
-        <div class="day-top">
-          <div class="day-title">${escapeHtml(formatDisplayDate(day.date))}</div>
-          <div class="day-meta">${day.totalScore} pts${day.successDay ? " | streak day" : ""}</div>
-        </div>
-        <div class="metric-row">
-          <span class="metric-pill">${day.steps.toLocaleString()} steps</span>
-          <span class="metric-pill">${roundToOne(day.exerciseMinutes)} min exercise</span>
-          <span class="metric-pill">${roundToOne(day.sleepHours)} hr sleep</span>
-          <span class="metric-pill">${roundToOne(day.mindfulMinutes)} min mindful</span>
-          <span class="metric-pill">${roundToOne(day.distanceKm)} km</span>
-          <span class="metric-pill">Food ${day.foodTrackCount}/5 on track</span>
-        </div>
-      </article>
-    `)
-    .join("");
-}
-
-function formatMetric(value, unit) {
-  const rounded = unit === "steps" ? Math.round(value).toLocaleString() : roundToOne(value);
-  return `${rounded} ${unit}`;
-}
-
-function roundToOne(value) {
-  return Math.round(value * 10) / 10;
-}
-
-function formatDisplayDate(dayKey) {
-  const date = new Date(`${dayKey}T12:00:00`);
-  if (Number.isNaN(date.getTime())) {
-    return dayKey;
-  }
-  return date.toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function setStatus(message) {
-  statusMessage.textContent = message;
+function capitalize(value) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function escapeHtml(value) {
@@ -683,48 +622,6 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function capitalize(value) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function loadDemoData() {
-  const today = new Date();
-  const days = [];
-  for (let offset = 14; offset >= 0; offset -= 1) {
-    const date = new Date(today);
-    date.setDate(date.getDate() - offset);
-    const dayIndex = 14 - offset;
-    days.push({
-      date: getDayKey(date.toISOString()),
-      steps: 5500 + (dayIndex * 870) % 7200,
-      exerciseMinutes: 12 + (dayIndex * 9) % 55,
-      distanceKm: 2.2 + (dayIndex * 0.7) % 6,
-      flights: 3 + (dayIndex % 9),
-      mindfulMinutes: [0, 5, 10, 15][dayIndex % 4],
-      sleepHours: 6.1 + ((dayIndex * 0.43) % 2.6),
-    });
-  }
-
-  state.foodLogs = buildDemoFoodLogs(days);
-  state.summary = computeGameSummary(days, state.settings, state.foodLogs);
-  state.importedAt = new Date().toISOString();
-  state.sourceName = "demo-data";
-  saveState();
-  render();
-  setStatus("Demo data loaded. You can now explore the game loop before importing your own export.");
-}
-
-function buildDemoFoodLogs(days) {
-  const logs = {};
-  for (let index = 0; index < days.length; index += 1) {
-    const day = days[index];
-    logs[day.date] = {
-      morning: [1, 1, 2, 0][index % 4],
-      lunch: [1, 2, 1, 3][index % 4],
-      snack: [0, 1, 2, 3][index % 4],
-      dinner: [1, 1, 2, 3][index % 4],
-      other: [0, 0, 2, 3][index % 4],
-    };
-  }
-  return logs;
+function setStatus(message) {
+  statusMessage.textContent = message;
 }
