@@ -1,0 +1,10 @@
+{
+  "name": "Health Quest",
+  "short_name": "Health Quest",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f6efe4",
+  "theme_color": "#0d3b66",
+  "description": "A local-first Apple Health gamification app.",
+  "icons": []
+}
