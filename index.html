@@ -15,28 +15,28 @@
     <header class="hero">
       <div class="hero-copy">
         <p class="eyebrow">Health Quest</p>
-        <h1>Build your health like a long campaign, not a single perfect day.</h1>
+        <h1>Build consistency that still works when life is boring.</h1>
         <p class="hero-text">
-          Log a few numbers at the end of the day, earn experience, unlock rewards, and watch
-          your weight and body-fat trends move over time.
+          This version is tuned for long-term maintenance: honest meal logging, sustainable scoring,
+          lighter maintenance mode, and trend tracking that rewards showing up instead of pretending.
         </p>
-      </div>
-      <div class="hero-side">
-        <div class="hero-card">
-          <div class="hero-card-label">Daily Score Model</div>
-          <div class="hero-card-copy">Steps plus exercise plus food control plus logging consistency equals XP.</div>
-        </div>
-        <div class="hero-card">
-          <div class="hero-card-label">Campaign Theme</div>
-          <div class="hero-card-copy">A steady-builder story about systems, restraint, and momentum.</div>
-        </div>
       </div>
     </header>
 
     <main class="main-grid">
-      <section class="panel profile-panel">
+      <section class="panel today-panel">
         <div class="panel-header">
-          <h2>Your Profile</h2>
+          <h2>Today</h2>
+          <div class="today-actions">
+            <button id="save-entry" type="button">Save Today</button>
+          </div>
+        </div>
+        <div id="today-card" class="today-card"></div>
+      </section>
+
+      <section class="panel settings-panel">
+        <div class="panel-header">
+          <h2>Settings & Data</h2>
         </div>
         <div class="profile-form">
           <label>
@@ -44,31 +44,38 @@
             <input id="display-name" type="text" maxlength="24" placeholder="Adventurer">
           </label>
           <label>
+            <span>Mode</span>
+            <select id="mode-toggle">
+              <option value="full">Full logging mode</option>
+              <option value="maintenance">Maintenance mode</option>
+            </select>
+          </label>
+          <label>
             <span>Daily step goal</span>
-            <input id="step-goal" type="number" min="1000" max="30000" step="500" value="8000">
+            <input id="step-goal" type="number" min="1000" max="30000" step="500">
           </label>
           <label>
             <span>Exercise goal (minutes)</span>
-            <input id="exercise-goal" type="number" min="5" max="180" step="5" value="30">
+            <input id="exercise-goal" type="number" min="5" max="180" step="5">
           </label>
           <label>
             <span>Weight goal</span>
-            <input id="weight-goal" type="number" min="50" max="500" step="0.1" value="185">
+            <input id="weight-goal" type="number" min="50" max="500" step="0.1">
           </label>
           <label>
             <span>Body fat goal (%)</span>
-            <input id="body-fat-goal" type="number" min="3" max="60" step="0.1" value="20">
+            <input id="body-fat-goal" type="number" min="3" max="60" step="0.1">
           </label>
-          <button id="save-profile" type="button">Save Goals</button>
+          <button id="save-profile" type="button">Save Settings</button>
         </div>
-        <p id="status-message" class="status-message">Set your targets, then start logging days.</p>
-      </section>
-
-      <section class="panel summary-panel">
-        <div class="panel-header">
-          <h2>Adventure Summary</h2>
+        <div class="data-actions">
+          <button id="export-json" type="button" class="secondary-button">Export JSON</button>
+          <label class="secondary-button file-button">
+            Import JSON
+            <input id="import-json" type="file" accept="application/json">
+          </label>
         </div>
-        <div id="summary-stats" class="stats-grid"></div>
+        <p id="status-message" class="status-message">Local-first storage is on. Export occasionally for safety.</p>
       </section>
 
       <section class="panel log-panel">
@@ -98,28 +105,30 @@
           </label>
         </div>
 
-        <div class="food-legend">
-          <span class="food-key"><strong>1</strong> on track</span>
-          <span class="food-key"><strong>2</strong> ok food, portion control</span>
-          <span class="food-key"><strong>3</strong> non controlled food nor portion control</span>
-          <span class="food-key"><strong>4</strong> out of control...stuffed</span>
+        <div class="habit-block">
+          <div class="subheading">Habit Checks</div>
+          <label class="checkbox-row"><input id="habit-protein" type="checkbox"> Protein at most meals</label>
+          <label class="checkbox-row"><input id="habit-produce" type="checkbox"> 2+ fruit/vegetable hits</label>
+          <label class="checkbox-row"><input id="habit-stopped" type="checkbox"> Stopped before stuffed</label>
         </div>
 
-        <div id="food-log" class="food-log"></div>
-        <button id="save-entry" type="button">Save Daily Entry</button>
+        <div id="food-section" class="food-section">
+          <div class="food-legend">
+            <span class="food-key"><strong>0</strong> N/A / skipped</span>
+            <span class="food-key"><strong>1</strong> on track</span>
+            <span class="food-key"><strong>2</strong> ok food, portion control</span>
+            <span class="food-key"><strong>3</strong> non controlled food nor portion control</span>
+            <span class="food-key"><strong>4</strong> out of control...stuffed</span>
+          </div>
+          <div id="food-log" class="food-log"></div>
+        </div>
       </section>
 
-      <section class="panel quest-panel">
+      <section class="panel summary-panel">
         <div class="panel-header">
-          <h2>Today's Scorecard</h2>
+          <h2>Weekly Trends</h2>
         </div>
-        <div id="quest-list" class="quest-list"></div>
-      </section>
-
-      <section class="panel chart-panel">
-        <div class="panel-header">
-          <h2>Trend Lines</h2>
-        </div>
+        <div id="summary-stats" class="stats-grid"></div>
         <div id="chart-wrap" class="chart-wrap"></div>
       </section>
 
@@ -133,8 +142,17 @@
             <input id="reward-name" type="text" maxlength="48" placeholder="New shirt, movie night, massage">
           </label>
           <label>
-            <span>Unlock level</span>
-            <input id="reward-level" type="number" min="1" max="100" step="1" value="2">
+            <span>Unlock by</span>
+            <select id="reward-type">
+              <option value="level">Level</option>
+              <option value="streak">Streak</option>
+              <option value="logged_days">Logged days</option>
+              <option value="lowest_avg_weight">New lowest 7-day average weight</option>
+            </select>
+          </label>
+          <label id="reward-value-wrap">
+            <span>Target value</span>
+            <input id="reward-value" type="number" min="1" max="999" step="1" value="2">
           </label>
           <button id="add-reward" type="button">Add Reward</button>
         </div>

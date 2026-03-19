@@ -33,18 +33,10 @@ body {
 .app-shell {
   width: min(1180px, calc(100vw - 24px));
   margin: 0 auto;
-  padding: 24px 0 40px;
+  padding: 16px 0 40px;
 }
 
-.hero {
-  display: grid;
-  grid-template-columns: 1.5fr 1fr;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-.hero-copy,
-.hero-side,
+.hero,
 .panel {
   background: var(--panel);
   border: 1px solid rgba(255, 255, 255, 0.5);
@@ -53,29 +45,9 @@ body {
   backdrop-filter: blur(10px);
 }
 
-.hero-copy {
-  padding: 28px;
-}
-
-.hero-side {
-  padding: 20px;
-  display: grid;
-  gap: 14px;
-}
-
-.hero-card {
-  padding: 18px;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, rgba(13, 59, 102, 0.98), rgba(22, 97, 136, 0.96));
-  color: white;
-}
-
-.hero-card-label {
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  opacity: 0.84;
-  margin-bottom: 8px;
+.hero {
+  padding: 22px;
+  margin-bottom: 20px;
 }
 
 .eyebrow {
@@ -96,23 +68,24 @@ p {
 
 h1 {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(2.2rem, 5vw, 4rem);
-  line-height: 1;
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  line-height: 1.03;
   margin-bottom: 12px;
 }
 
 .hero-text {
-  max-width: 60ch;
+  max-width: 65ch;
   color: var(--muted);
-  font-size: 1.02rem;
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
-button {
+button,
+.file-button {
   border: 0;
   border-radius: 999px;
   background: var(--brand-2);
@@ -120,6 +93,16 @@ button {
   font-weight: 700;
   padding: 12px 18px;
   cursor: pointer;
+  text-align: center;
+}
+
+.secondary-button {
+  background: rgba(13, 59, 102, 0.08);
+  color: var(--brand);
+}
+
+.file-button input {
+  display: none;
 }
 
 .main-grid {
@@ -129,31 +112,38 @@ button {
 }
 
 .panel {
-  padding: 22px;
+  padding: 20px;
   min-width: 0;
 }
 
-.profile-panel,
-.summary-panel {
+.today-panel {
+  grid-column: 1 / -1;
+}
+
+.settings-panel,
+.summary-panel,
+.activity-panel {
   grid-column: span 6;
 }
 
-.log-panel,
-.chart-panel,
-.activity-panel {
-  grid-column: span 8;
+.log-panel {
+  grid-column: span 7;
 }
 
-.quest-panel,
 .rewards-panel,
 .story-panel {
-  grid-column: span 4;
+  grid-column: span 5;
 }
 
-.panel-header {
+.panel-header,
+.today-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
+}
+
+.panel-header {
   margin-bottom: 16px;
 }
 
@@ -176,13 +166,22 @@ button {
 
 .profile-form input,
 .daily-form input,
-.reward-form input {
+.reward-form input,
+.profile-form select,
+.reward-form select {
   width: 100%;
   padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.75);
   color: var(--ink);
+}
+
+.data-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
 }
 
 .status-message {
@@ -190,53 +189,59 @@ button {
   color: var(--muted);
 }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.stat-card,
-.quest-card,
-.reward-card,
-.day-card,
-.chart-card,
-.story-card {
+.habit-block {
+  margin-top: 18px;
   padding: 16px;
   border-radius: var(--radius-lg);
   background: var(--panel-strong);
   border: 1px solid var(--line);
 }
 
-.stat-label,
-.quest-meta,
-.reward-meta,
-.day-meta,
-.chart-meta,
-.story-kicker {
-  color: var(--muted);
-  font-size: 0.9rem;
+.subheading {
+  font-weight: 700;
+  margin-bottom: 10px;
 }
 
-.stat-value {
-  font-size: clamp(1.45rem, 3vw, 2.4rem);
-  font-weight: 800;
-  margin: 6px 0;
+.checkbox-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+
+.food-section {
+  margin-top: 18px;
 }
 
 .food-legend {
   display: grid;
   gap: 6px;
-  margin: 18px 0 14px;
+  margin-bottom: 14px;
   color: var(--muted);
   font-size: 0.9rem;
 }
 
 .food-log,
 .reward-list,
-.day-list {
+.day-list,
+.chart-wrap {
   display: grid;
   gap: 12px;
+}
+
+.food-row,
+.stat-card,
+.reward-card,
+.day-card,
+.chart-card,
+.story-card,
+.today-stat,
+.today-main,
+.today-breakdown {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
 }
 
 .food-row {
@@ -245,13 +250,9 @@ button {
   gap: 10px;
   align-items: center;
   padding: 14px;
-  background: var(--panel-strong);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
 }
 
 .food-label,
-.quest-title,
 .reward-title,
 .day-title,
 .chart-title {
@@ -290,37 +291,89 @@ button {
   color: white;
 }
 
-.quest-top,
-.day-top,
-.reward-card {
+.today-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr;
+  gap: 14px;
+}
+
+.today-main,
+.today-breakdown,
+.today-stat,
+.stat-card,
+.reward-card,
+.day-card,
+.chart-card,
+.story-card {
+  padding: 16px;
+}
+
+.today-kicker,
+.stat-label,
+.reward-meta,
+.day-meta,
+.chart-meta,
+.story-kicker {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.today-score {
+  font-size: clamp(2.4rem, 6vw, 4.4rem);
+  line-height: 1;
+  font-weight: 800;
+  margin: 8px 0;
+}
+
+.today-copy {
+  color: var(--muted);
+}
+
+.today-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.stat-value {
+  font-size: clamp(1.4rem, 3vw, 2.2rem);
+  font-weight: 800;
+  margin: 6px 0;
+}
+
+.stat-value.small {
+  font-size: 1.35rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.score-row,
+.reward-card,
+.day-top {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   align-items: baseline;
 }
 
-.score-breakdown,
-.goal-lines {
-  display: grid;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.score-row {
+.metric-row {
+  margin-top: 10px;
   display: flex;
-  justify-content: space-between;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.food-summary-line {
-  margin-top: 12px;
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-
-.chart-wrap {
-  display: grid;
-  gap: 14px;
+.metric-pill {
+  padding: 8px 10px;
+  background: rgba(13, 59, 102, 0.06);
+  border-radius: 999px;
+  font-size: 0.87rem;
+  color: var(--brand);
 }
 
 .trend-chart {
@@ -355,21 +408,6 @@ button {
   cursor: not-allowed;
 }
 
-.metric-row {
-  margin-top: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.metric-pill {
-  padding: 8px 10px;
-  background: rgba(13, 59, 102, 0.06);
-  border-radius: 999px;
-  font-size: 0.87rem;
-  color: var(--brand);
-}
-
 .empty-state {
   color: var(--muted);
   padding: 18px;
@@ -377,32 +415,36 @@ button {
   border-radius: var(--radius-lg);
 }
 
+.is-hidden {
+  display: none;
+}
+
 @media (max-width: 980px) {
-  .hero,
   .main-grid {
     grid-template-columns: 1fr;
   }
 
-  .profile-panel,
+  .settings-panel,
   .summary-panel,
-  .log-panel,
-  .chart-panel,
   .activity-panel,
-  .quest-panel,
+  .log-panel,
   .rewards-panel,
   .story-panel {
     grid-column: auto;
+  }
+
+  .today-grid {
+    grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 640px) {
   .app-shell {
     width: min(100vw - 16px, 100%);
-    padding-top: 16px;
+    padding-top: 12px;
   }
 
-  .hero-copy,
-  .hero-side,
+  .hero,
   .panel {
     border-radius: 22px;
   }
@@ -411,7 +453,12 @@ button {
   .daily-form,
   .reward-form,
   .stats-grid,
+  .today-stats,
   .food-row {
     grid-template-columns: 1fr;
+  }
+
+  .panel {
+    padding: 16px;
   }
 }
