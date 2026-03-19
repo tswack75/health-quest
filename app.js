@@ -1,3 +1,4 @@
+const APP_VERSION = "v3.1.0";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const mealSlots = ["morning", "lunch", "afternoon", "dinner", "other"];
@@ -5,9 +6,9 @@ const coreMealSlots = ["morning", "lunch", "afternoon", "dinner"];
 const foodOptions = {
   0: { label: "N/A / skipped", quality: null },
   1: { label: "On track", quality: 1 },
-  2: { label: "OK + portion control", quality: 0.65 },
-  3: { label: "Not controlled", quality: 0.25 },
-  4: { label: "Out of control", quality: 0 },
+  2: { label: "Okay, portion controlled", quality: 0.65 },
+  3: { label: "Off track, still contained", quality: 0.25 },
+  4: { label: "Overate / stuffed", quality: 0 },
 };
 
 const defaultSettings = {
@@ -59,9 +60,11 @@ const entryStepsInput = document.getElementById("entry-steps");
 const entryExerciseInput = document.getElementById("entry-exercise");
 const entryWeightInput = document.getElementById("entry-weight");
 const entryBodyFatInput = document.getElementById("entry-body-fat");
+const entryNotesInput = document.getElementById("entry-notes");
 const habitProteinInput = document.getElementById("habit-protein");
 const habitProduceInput = document.getElementById("habit-produce");
 const habitStoppedInput = document.getElementById("habit-stopped");
+const habitMovementInput = document.getElementById("habit-movement");
 const foodSection = document.getElementById("food-section");
 const foodLog = document.getElementById("food-log");
 const saveEntryButton = document.getElementById("save-entry");
@@ -75,14 +78,24 @@ const addRewardButton = document.getElementById("add-reward");
 const statusMessage = document.getElementById("status-message");
 const todayCard = document.getElementById("today-card");
 const summaryStats = document.getElementById("summary-stats");
+const guardrailList = document.getElementById("guardrail-list");
 const chartWrap = document.getElementById("chart-wrap");
 const rewardList = document.getElementById("reward-list");
 const storyCard = document.getElementById("story-card");
 const dayList = document.getElementById("day-list");
+const lastExportStatus = document.getElementById("last-export-status");
+const appVersion = document.getElementById("app-version");
+const footerVersion = document.getElementById("footer-version");
+const logPanel = document.querySelector(".log-panel");
+const rewardsPanel = document.querySelector(".rewards-panel");
+const storyPanel = document.querySelector(".story-panel");
+const activityPanel = document.querySelector(".activity-panel");
 
 initialize();
 
 function initialize() {
+  appVersion.textContent = APP_VERSION;
+  footerVersion.textContent = `Version ${APP_VERSION}`;
   hydrateSettingsForm();
   entryDateInput.value = getTodayKey();
   hydrateEntryForm(getSelectedDateKey());
@@ -106,6 +119,7 @@ function initialize() {
 }
 
 function loadState() {
+  // Migrate forward from the newest known key first, then older shapes if needed.
   for (const key of [STORAGE_KEY, ...LEGACY_KEYS]) {
     const raw = localStorage.getItem(key);
     if (!raw) {
@@ -129,6 +143,9 @@ function createEmptyState() {
     settings: { ...defaultSettings },
     entries: {},
     rewards: [],
+    meta: {
+      lastExportAt: null,
+    },
   };
 }
 
@@ -143,6 +160,8 @@ function migrateState(parsed, sourceKey) {
     settings.mode = "full";
   }
 
+  // Older builds stored different shapes. Reconstruct per-day entries when possible
+  // so existing local data remains usable after upgrading the app.
   const legacyEntries = parsed.entries || buildLegacyEntries(parsed);
   const entries = {};
   for (const [dateKey, rawEntry] of Object.entries(legacyEntries || {})) {
@@ -153,11 +172,16 @@ function migrateState(parsed, sourceKey) {
     ? parsed.rewards.map((reward) => migrateReward(reward))
     : [];
 
+  const meta = {
+    lastExportAt: parsed.meta?.lastExportAt || parsed.lastExportAt || null,
+  };
+
   const migrated = {
     version: 3,
     settings,
     entries,
     rewards,
+    meta,
   };
 
   if (sourceKey !== STORAGE_KEY) {
@@ -168,6 +192,8 @@ function migrateState(parsed, sourceKey) {
 }
 
 function buildLegacyEntries(parsed) {
+  // v1/v2 data may have timeline days plus separate food logs instead of the current
+  // unified entry schema. This bridges those formats into v3 entries.
   const legacy = {};
   const days = parsed.summary?.days || [];
 
@@ -219,11 +245,13 @@ function migrateEntry(dateKey, rawEntry) {
     exerciseMinutes: Number(rawEntry?.exerciseMinutes) || 0,
     weight: rawEntry?.weight == null ? null : Number(rawEntry.weight),
     bodyFat: rawEntry?.bodyFat == null ? null : Number(rawEntry.bodyFat),
+    notes: typeof rawEntry?.notes === "string" ? rawEntry.notes.slice(0, 120) : "",
     food: migratedFood,
     habits: {
       protein: Boolean(rawEntry?.habits?.protein),
       produce: Boolean(rawEntry?.habits?.produce),
       stoppedBeforeStuffed: Boolean(rawEntry?.habits?.stoppedBeforeStuffed),
+      movement: Boolean(rawEntry?.habits?.movement),
     },
   };
 }
@@ -273,6 +301,7 @@ function hydrateSettingsForm() {
   exerciseGoalInput.value = state.settings.exerciseGoal;
   weightGoalInput.value = state.settings.weightGoal;
   bodyFatGoalInput.value = state.settings.bodyFatGoal;
+  lastExportStatus.textContent = formatRelativeExport(state.meta?.lastExportAt);
 }
 
 function saveProfile() {
@@ -310,9 +339,11 @@ function hydrateEntryForm(dateKey) {
   entryExerciseInput.value = entry.exerciseMinutes || "";
   entryWeightInput.value = entry.weight ?? "";
   entryBodyFatInput.value = entry.bodyFat ?? "";
+  entryNotesInput.value = entry.notes || "";
   habitProteinInput.checked = entry.habits.protein;
   habitProduceInput.checked = entry.habits.produce;
   habitStoppedInput.checked = entry.habits.stoppedBeforeStuffed;
+  habitMovementInput.checked = entry.habits.movement;
 }
 
 function getEntry(dateKey) {
@@ -323,11 +354,13 @@ function getEntry(dateKey) {
     exerciseMinutes: 0,
     weight: null,
     bodyFat: null,
+    notes: "",
     food: createEmptyFoodEntry(),
     habits: {
       protein: false,
       produce: false,
       stoppedBeforeStuffed: false,
+      movement: false,
     },
     ...(state.entries[dateKey] || {}),
     food: {
@@ -338,6 +371,7 @@ function getEntry(dateKey) {
       protein: Boolean((state.entries[dateKey] || {}).habits?.protein),
       produce: Boolean((state.entries[dateKey] || {}).habits?.produce),
       stoppedBeforeStuffed: Boolean((state.entries[dateKey] || {}).habits?.stoppedBeforeStuffed),
+      movement: Boolean((state.entries[dateKey] || {}).habits?.movement),
     },
   };
 }
@@ -361,11 +395,13 @@ function saveDailyEntry() {
     exerciseMinutes: clampNumber(entryExerciseInput.value, 0, 300, 0),
     weight: parseOptionalNumber(entryWeightInput.value),
     bodyFat: parseOptionalNumber(entryBodyFatInput.value),
+    notes: (entryNotesInput.value || "").trim().slice(0, 120),
     food: readFoodForm(),
     habits: {
       protein: habitProteinInput.checked,
       produce: habitProduceInput.checked,
       stoppedBeforeStuffed: habitStoppedInput.checked,
+      movement: habitMovementInput.checked,
     },
   };
 
@@ -399,7 +435,7 @@ function renderFoodLog() {
                 value="${value}"
                 ${Number(value) === food[slot] ? "checked" : ""}
               >
-              <span>${value}</span>
+              <span>${value}<small>${escapeHtml(foodOptions[value].label)}</small></span>
             </label>
           `).join("")}
         </div>
@@ -470,6 +506,9 @@ function exportJson() {
   anchor.download = `health-quest-export-${getTodayKey()}.json`;
   anchor.click();
   URL.revokeObjectURL(url);
+  state.meta.lastExportAt = new Date().toISOString();
+  saveState();
+  lastExportStatus.textContent = formatRelativeExport(state.meta.lastExportAt);
   setStatus("Exported your local data as JSON.");
 }
 
@@ -505,7 +544,13 @@ function render() {
   renderRewards(summary);
   renderStory(summary);
   renderRecentDays(summary.timelineLogged);
+  lastExportStatus.textContent = formatRelativeExport(state.meta?.lastExportAt);
+  document.body.classList.toggle("maintenance-mode", state.settings.mode === "maintenance");
   foodSection.classList.toggle("is-hidden", state.settings.mode === "maintenance");
+  logPanel.classList.toggle("is-hidden", state.settings.mode === "maintenance");
+  rewardsPanel.classList.toggle("is-hidden", state.settings.mode === "maintenance");
+  storyPanel.classList.toggle("is-hidden", state.settings.mode === "maintenance");
+  activityPanel.classList.toggle("is-hidden", state.settings.mode === "maintenance");
 }
 
 function computeSummary() {
@@ -535,9 +580,30 @@ function computeSummary() {
     eliteStreak,
     bestRegularStreak,
     bestEliteStreak,
-    today: scoreDay(getEntry(getSelectedDateKey())),
+    today: scoreDay(getDraftEntry()),
     weekly,
     rewards,
+  };
+}
+
+function getDraftEntry() {
+  const dateKey = getSelectedDateKey();
+  return {
+    ...getEntry(dateKey),
+    date: dateKey,
+    mode: state.settings.mode,
+    steps: clampNumber(entryStepsInput.value, 0, 100000, 0),
+    exerciseMinutes: clampNumber(entryExerciseInput.value, 0, 300, 0),
+    weight: parseOptionalNumber(entryWeightInput.value),
+    bodyFat: parseOptionalNumber(entryBodyFatInput.value),
+    notes: (entryNotesInput.value || "").trim().slice(0, 120),
+    food: readFoodForm(),
+    habits: {
+      protein: habitProteinInput.checked,
+      produce: habitProduceInput.checked,
+      stoppedBeforeStuffed: habitStoppedInput.checked,
+      movement: habitMovementInput.checked,
+    },
   };
 }
 
@@ -555,8 +621,11 @@ function scoreDay(entry) {
   const foodPoints = Math.min(25, Math.round(foodAverage * 22) + foodCompletionBonus);
 
   const bodyMetricPoints = (entry.weight != null ? 5 : 0) + (entry.bodyFat != null ? 5 : 0);
-  const habitBase = (entry.habits.protein ? 6 : 0) + (entry.habits.produce ? 6 : 0) + (entry.habits.stoppedBeforeStuffed ? 6 : 0);
-  const habitPoints = habitBase + (entry.habits.protein && entry.habits.produce && entry.habits.stoppedBeforeStuffed ? 2 : 0);
+  const habitPoints =
+    (entry.habits.protein ? 5 : 0) +
+    (entry.habits.produce ? 5 : 0) +
+    (entry.habits.stoppedBeforeStuffed ? 5 : 0) +
+    (entry.habits.movement ? 5 : 0);
   const rawTotal = stepPoints + exercisePoints + (dayMode === "full" ? foodPoints : 0) + bodyMetricPoints + habitPoints;
   const scoreCap = dayMode === "full" ? 100 : 75;
   const totalScore = Math.round((rawTotal / scoreCap) * 100);
@@ -649,10 +718,24 @@ function computeWeeklyMetrics(loggedEntries) {
 
   const allWeeklyWeightAverages = buildRollingAverageSeries(loggedEntries, "weight");
   const latestWeeklyWeightAverage = allWeeklyWeightAverages.length ? allWeeklyWeightAverages[allWeeklyWeightAverages.length - 1].value : null;
+  const previousWeeklyWeightAverages = allWeeklyWeightAverages.slice(0, -1).map((item) => item.value);
+  const priorLowestWeeklyWeightAverage = previousWeeklyWeightAverages.length
+    ? Math.min(...previousWeeklyWeightAverages)
+    : null;
   const lowestWeeklyWeightAverage = allWeeklyWeightAverages.length
     ? Math.min(...allWeeklyWeightAverages.map((item) => item.value))
     : null;
-  const isNewLowestWeightAverage = latestWeeklyWeightAverage != null && latestWeeklyWeightAverage === lowestWeeklyWeightAverage;
+  const isNewLowestWeightAverage = latestWeeklyWeightAverage != null && (
+    priorLowestWeeklyWeightAverage == null || latestWeeklyWeightAverage <= priorLowestWeeklyWeightAverage - 0.2
+  );
+
+  const scoreSeries = buildRollingAverageSeries(loggedEntries, "totalScore");
+  const latestScoreAverage = scoreSeries.length ? scoreSeries[scoreSeries.length - 1].value : null;
+  const priorScoreAverage = scoreSeries.length > 1 ? scoreSeries[scoreSeries.length - 2].value : null;
+
+  const weightSeries = buildRollingAverageSeries(loggedEntries, "weight");
+  const latestWeightAverage = weightSeries.length ? weightSeries[weightSeries.length - 1].value : null;
+  const priorWeightAverage = weightSeries.length > 1 ? weightSeries[weightSeries.length - 2].value : null;
 
   return {
     scoreAverage,
@@ -660,7 +743,13 @@ function computeWeeklyMetrics(loggedEntries) {
     bodyFatAverage,
     loggedDays,
     latestWeeklyWeightAverage,
+    priorLowestWeeklyWeightAverage,
+    lowestWeeklyWeightAverage,
     isNewLowestWeightAverage,
+    latestScoreAverage,
+    priorScoreAverage,
+    latestWeightAverage,
+    priorWeightAverage,
   };
 }
 
@@ -704,8 +793,14 @@ function renderTodayCard(summary) {
     { label: "Score", value: `${today.totalScore}` },
     { label: "XP", value: `+${today.totalScore + today.bonusXp}` },
     { label: "Day Type", value: capitalize(today.dayType) },
-        { label: "Mode", value: capitalize(today.mode) },
+    { label: "Mode", value: capitalize(today.mode) },
   ];
+  const noteMarkup = `
+    <label class="quick-field quick-notes">
+      <span>Notes</span>
+      <input id="today-notes" type="text" maxlength="120" value="${escapeHtml(today.notes || "")}" placeholder="client lunch, poor sleep, field day">
+    </label>
+  `;
 
   todayCard.innerHTML = `
     <div class="today-grid">
@@ -713,6 +808,35 @@ function renderTodayCard(summary) {
         <div class="today-kicker">${escapeHtml(selectedDateLabel)}</div>
         <div class="today-score">${today.totalScore}</div>
         <div class="today-copy">Win day at 70+. Solid day at 55+. Regular streak survives solid days; elite streak needs wins.</div>
+        <div class="quick-fields">
+          <label class="quick-field">
+            <span>Date</span>
+            <input id="today-date" type="date" value="${escapeHtml(getSelectedDateKey())}">
+          </label>
+          <label class="quick-field">
+            <span>Steps</span>
+            <input id="today-steps" type="number" min="0" max="100000" step="100" value="${today.steps || ""}">
+          </label>
+          <label class="quick-field">
+            <span>Exercise</span>
+            <input id="today-exercise" type="number" min="0" max="300" step="5" value="${today.exerciseMinutes || ""}">
+          </label>
+          <label class="quick-field">
+            <span>Weight</span>
+            <input id="today-weight" type="number" min="50" max="500" step="0.1" value="${today.weight ?? ""}">
+          </label>
+          <label class="quick-field">
+            <span>Body Fat %</span>
+            <input id="today-body-fat" type="number" min="3" max="60" step="0.1" value="${today.bodyFat ?? ""}">
+          </label>
+          ${noteMarkup}
+        </div>
+        <div class="today-habits">
+          <label class="checkbox-row compact"><input id="today-habit-protein" type="checkbox" ${today.habits.protein ? "checked" : ""}> Protein</label>
+          <label class="checkbox-row compact"><input id="today-habit-produce" type="checkbox" ${today.habits.produce ? "checked" : ""}> Produce</label>
+          <label class="checkbox-row compact"><input id="today-habit-stopped" type="checkbox" ${today.habits.stoppedBeforeStuffed ? "checked" : ""}> Stopped before stuffed</label>
+          <label class="checkbox-row compact"><input id="today-habit-movement" type="checkbox" ${today.habits.movement ? "checked" : ""}> Movement target</label>
+        </div>
       </div>
       <div class="today-stats">
         ${quickStats.map((item) => `
@@ -731,6 +855,50 @@ function renderTodayCard(summary) {
       </div>
     </div>
   `;
+
+  wireTodayQuickInputs();
+}
+
+function wireTodayQuickInputs() {
+  syncQuickInput("today-date", entryDateInput, true);
+  syncQuickInput("today-steps", entryStepsInput);
+  syncQuickInput("today-exercise", entryExerciseInput);
+  syncQuickInput("today-weight", entryWeightInput);
+  syncQuickInput("today-body-fat", entryBodyFatInput);
+  syncQuickInput("today-notes", entryNotesInput);
+  syncQuickCheckbox("today-habit-protein", habitProteinInput);
+  syncQuickCheckbox("today-habit-produce", habitProduceInput);
+  syncQuickCheckbox("today-habit-stopped", habitStoppedInput);
+  syncQuickCheckbox("today-habit-movement", habitMovementInput);
+}
+
+function syncQuickInput(sourceId, targetInput, rerender = false) {
+  const source = document.getElementById(sourceId);
+  if (!source || !targetInput) {
+    return;
+  }
+  source.addEventListener("input", () => {
+    targetInput.value = source.value;
+  });
+  source.addEventListener("change", () => {
+    targetInput.value = source.value;
+    if (rerender) {
+      handleDateChange();
+    } else {
+      render();
+    }
+  });
+}
+
+function syncQuickCheckbox(sourceId, targetInput) {
+  const source = document.getElementById(sourceId);
+  if (!source || !targetInput) {
+    return;
+  }
+  source.addEventListener("change", () => {
+    targetInput.checked = source.checked;
+    render();
+  });
 }
 
 function renderWeeklySummary(summary) {
@@ -742,6 +910,10 @@ function renderWeeklySummary(summary) {
     statCard("7-day Avg Weight", formatMaybe(summary.weekly.weightAverage, 1), `Goal: ${state.settings.weightGoal}`),
     statCard("7-day Avg Body Fat", formatMaybe(summary.weekly.bodyFatAverage, 1, "%"), `Goal: ${state.settings.bodyFatGoal}%`),
   ].join("");
+
+  guardrailList.innerHTML = buildGuardrails(summary)
+    .map((message) => `<div class="guardrail-item">${escapeHtml(message)}</div>`)
+    .join("");
 }
 
 function renderCharts(summary) {
@@ -750,13 +922,13 @@ function renderCharts(summary) {
   const scoreDays = summary.timelineLogged;
 
   chartWrap.innerHTML = `
-    ${renderLineChart("Weight", weightDays, "weight", state.settings.weightGoal)}
-    ${renderLineChart("Body Fat %", bodyFatDays, "bodyFat", state.settings.bodyFatGoal)}
+    ${renderLineChart("Weight", weightDays, "weight", state.settings.weightGoal, buildRollingAverageSeries(weightDays, "weight"))}
+    ${renderLineChart("Body Fat %", bodyFatDays, "bodyFat", state.settings.bodyFatGoal, buildRollingAverageSeries(bodyFatDays, "bodyFat"))}
     ${renderLineChart("Daily Score", scoreDays, "totalScore", 70)}
   `;
 }
 
-function renderLineChart(title, data, key, goal) {
+function renderLineChart(title, data, key, goal, movingAverageSeries = []) {
   if (!data.length) {
     return `<div class="empty-state">${escapeHtml(title)} graph appears after you log a few days.</div>`;
   }
@@ -764,25 +936,42 @@ function renderLineChart(title, data, key, goal) {
   const width = 320;
   const height = 160;
   const padding = 18;
-  const values = data.map((item) => item[key]);
+  const values = data.map((item) => item[key]).concat(movingAverageSeries.map((item) => item.value));
   const min = Math.min(...values, goal);
   const max = Math.max(...values, goal);
   const range = Math.max(1, max - min);
 
+  const dateIndexMap = new Map(data.map((item, index) => [item.date, index]));
   const points = data.map((item, index) => {
     const x = padding + (index * (width - padding * 2)) / Math.max(1, data.length - 1);
     const y = height - padding - ((item[key] - min) / range) * (height - padding * 2);
     return `${x},${y}`;
   }).join(" ");
+  const movingAveragePoints = movingAverageSeries.map((item) => {
+    const index = dateIndexMap.get(item.date);
+    const x = padding + (index * (width - padding * 2)) / Math.max(1, data.length - 1);
+    const y = height - padding - ((item.value - min) / range) * (height - padding * 2);
+    return `${x},${y}`;
+  }).join(" ");
 
   const goalY = height - padding - ((goal - min) / range) * (height - padding * 2);
+  const latest = data[data.length - 1]?.[key] ?? null;
+  const sevenAgo = data.length > 7 ? data[data.length - 8]?.[key] ?? null : null;
+  const change = latest != null && sevenAgo != null ? latest - sevenAgo : null;
+  const currentAverage = movingAverageSeries.length ? movingAverageSeries[movingAverageSeries.length - 1].value : null;
 
   return `
     <div class="chart-card">
       <div class="chart-title">${escapeHtml(title)}</div>
+      <div class="chart-summary">
+        <span>Latest: ${formatMaybe(latest, key === "totalScore" ? 0 : 1)}</span>
+        <span>vs 7 days ago: ${formatSigned(change, key === "totalScore" ? 0 : 1)}</span>
+        <span>7-day avg: ${formatMaybe(currentAverage, key === "totalScore" ? 0 : 1)}</span>
+      </div>
       <svg viewBox="0 0 ${width} ${height}" class="trend-chart" role="img" aria-label="${escapeHtml(title)} trend">
         <line x1="${padding}" y1="${goalY}" x2="${width - padding}" y2="${goalY}" class="goal-line"></line>
         <polyline points="${points}" class="trend-line"></polyline>
+        ${movingAveragePoints ? `<polyline points="${movingAveragePoints}" class="trend-line trend-line-average"></polyline>` : ""}
         ${data.map((item, index) => {
           const x = padding + (index * (width - padding * 2)) / Math.max(1, data.length - 1);
           const y = height - padding - ((item[key] - min) / range) * (height - padding * 2);
@@ -792,6 +981,32 @@ function renderLineChart(title, data, key, goal) {
       <div class="chart-meta">Reference line: ${goal}</div>
     </div>
   `;
+}
+
+function buildGuardrails(summary) {
+  const messages = [];
+  if (summary.weekly.loggedDays < 4) {
+    messages.push(`You logged only ${summary.weekly.loggedDays} of the last 7 days.`);
+  }
+  if (summary.weekly.latestScoreAverage != null && summary.weekly.priorScoreAverage != null && summary.weekly.latestScoreAverage < summary.weekly.priorScoreAverage - 5) {
+    messages.push("Average score is down this week.");
+  }
+  if (
+    summary.weekly.latestWeightAverage != null &&
+    summary.weekly.priorWeightAverage != null &&
+    summary.weekly.latestWeightAverage <= summary.weekly.priorWeightAverage + 0.2 &&
+    summary.weekly.latestWeightAverage >= summary.weekly.priorWeightAverage - 0.2
+  ) {
+    const latestWeight = summary.timelineLogged.filter((day) => day.weight != null).slice(-1)[0]?.weight ?? null;
+    const previousWeight = summary.timelineLogged.filter((day) => day.weight != null).slice(-8, -7)[0]?.weight ?? null;
+    if (latestWeight != null && previousWeight != null && latestWeight > previousWeight) {
+      messages.push("Weight is up, but the 7-day average is still stable.");
+    }
+  }
+  if (!messages.length) {
+    messages.push("Weekly trend is steady. Keep the system simple and consistent.");
+  }
+  return messages;
 }
 
 function renderRewards(summary) {
@@ -853,6 +1068,7 @@ function renderRecentDays(days) {
           <span class="metric-pill">${day.weight != null ? `${day.weight} lb` : "No weight"}</span>
           <span class="metric-pill">${day.bodyFat != null ? `${day.bodyFat}% fat` : "No body fat"}</span>
         </div>
+        ${day.notes ? `<div class="day-notes">${escapeHtml(day.notes)}</div>` : ""}
       </article>
     `)
     .join("");
@@ -888,6 +1104,14 @@ function formatMaybe(value, decimals = 0, suffix = "") {
     return "--";
   }
   return `${value.toFixed(decimals)}${suffix}`;
+}
+
+function formatSigned(value, decimals = 0) {
+  if (value == null || Number.isNaN(value)) {
+    return "--";
+  }
+  const prefix = value > 0 ? "+" : "";
+  return `${prefix}${value.toFixed(decimals)}`;
 }
 
 function average(values) {
@@ -936,6 +1160,25 @@ function formatDisplayDate(dateKey) {
   return Number.isNaN(date.getTime())
     ? dateKey
     : date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
+function formatRelativeExport(timestamp) {
+  if (!timestamp) {
+    return "Never";
+  }
+  const then = new Date(timestamp);
+  if (Number.isNaN(then.getTime())) {
+    return "Never";
+  }
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - then.getTime()) / 86400000);
+  if (diffDays <= 0) {
+    return "Today";
+  }
+  if (diffDays === 1) {
+    return "1 day ago";
+  }
+  return `${diffDays} days ago`;
 }
 
 function capitalize(value) {
