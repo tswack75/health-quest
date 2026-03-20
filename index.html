@@ -7,8 +7,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Health Quest</title>
-  <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.json?v=4.0.0">
+  <link rel="stylesheet" href="styles.css?v=4.0.0">
 </head>
 <body>
   <div class="app-shell">
@@ -16,12 +16,18 @@
       <div class="hero-copy">
         <p class="eyebrow">Health Quest</p>
         <h1>Build consistency that still works when life is boring.</h1>
+        <p class="hero-theme">The Outpost Campaign</p>
         <p class="hero-text">
           This version is tuned for long-term maintenance: honest meal logging, sustainable scoring,
           lighter maintenance mode, and trend tracking that rewards showing up instead of pretending.
         </p>
       </div>
     </header>
+
+    <div id="update-banner" class="update-banner is-hidden">
+      <span id="update-banner-text">A newer build is ready.</span>
+      <button id="refresh-app" type="button">Refresh App</button>
+    </div>
 
     <main class="main-grid">
       <section class="panel today-panel">
@@ -123,11 +129,12 @@
 
         <div id="food-section" class="food-section">
           <div class="food-legend">
-            <span class="food-key"><strong>0</strong> N/A / skipped</span>
+            <span class="food-key"><strong>0</strong> ate nothing / n/a</span>
             <span class="food-key"><strong>1</strong> on track</span>
-            <span class="food-key"><strong>2</strong> okay, portion controlled</span>
-            <span class="food-key"><strong>3</strong> off track, still contained</span>
-            <span class="food-key"><strong>4</strong> overate / stuffed</span>
+            <span class="food-key"><strong>2</strong> either ate good food with larger portions OR ate worse food but maintained portion control</span>
+            <span class="food-key"><strong>3</strong> worse food with little portion control, but remained mindful</span>
+            <span class="food-key"><strong>4</strong> ate until full</span>
+            <span class="food-key"><strong>5</strong> stuffed myself</span>
           </div>
           <div id="food-log" class="food-log"></div>
         </div>
@@ -190,6 +197,6 @@
     </footer>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=4.0.0"></script>
 </body>
 </html>

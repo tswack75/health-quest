@@ -1,14 +1,15 @@
-const APP_VERSION = "v3.1.0";
+const APP_VERSION = "v4.0.0";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const mealSlots = ["morning", "lunch", "afternoon", "dinner", "other"];
 const coreMealSlots = ["morning", "lunch", "afternoon", "dinner"];
 const foodOptions = {
-  0: { label: "N/A / skipped", quality: null },
+  0: { label: "Ate nothing / N/A", quality: null, score: 0 },
   1: { label: "On track", quality: 1 },
-  2: { label: "Okay, portion controlled", quality: 0.65 },
-  3: { label: "Off track, still contained", quality: 0.25 },
-  4: { label: "Overate / stuffed", quality: 0 },
+  2: { label: "Good food, larger portions or worse food with control", quality: 0.82, score: 0.82 },
+  3: { label: "Worse food, little control, still mindful", quality: 0.5, score: 0.5 },
+  4: { label: "Ate until full", quality: 0.18, score: 0.18 },
+  5: { label: "Stuffed myself", quality: 0, score: 0 },
 };
 
 const defaultSettings = {
@@ -21,26 +22,21 @@ const defaultSettings = {
 };
 
 const storyChapters = [
-  {
-    level: 1,
-    title: "The Honest Ledger",
-    body: "This campaign begins when you stop trying to look perfect in the log. Real progress starts when the numbers tell the truth.",
-  },
-  {
-    level: 3,
-    title: "The Long Game",
-    body: "You are no longer building around urgency. You are building something that can survive normal weeks, rushed days, and imperfect meals.",
-  },
-  {
-    level: 6,
-    title: "The Maintenance Guild",
-    body: "This is the quiet professional tier: steady entries, smaller overreactions, and fewer all-or-nothing swings. Boring is becoming powerful.",
-  },
-  {
-    level: 10,
-    title: "The Architect",
-    body: "The system now carries more of the weight. Your job is not to feel heroic every day. Your job is to keep the structure alive.",
-  },
+  { level: 1, title: "Ash Gate", body: "The outpost is still standing, but only barely. Inventory is bad, the walls have soft spots, and drift has been moving through the place like weather." },
+  { level: 2, title: "The First Ledger", body: "You do not begin with glory. You begin by counting honestly. The first stable record changes the outpost more than any speech ever could." },
+  { level: 3, title: "Quiet Repairs", body: "Small corrections start holding. A meal contained here, a walk taken there, one less overreaction after a messy day. The map is not cleaner yet, but it is less chaotic." },
+  { level: 4, title: "False Urgency", body: "A courier arrives carrying the old lie: do everything at once. You decline. The outpost survives not by panic, but by repeatable decisions." },
+  { level: 5, title: "North Wall Reinforced", body: "Structure begins to show. The wall that used to buckle after one bad night now holds through weather, noise, and convenience." },
+  { level: 6, title: "The Reservoir", body: "You discover something useful: consistency stores energy. The calm day you almost dismissed is now carrying the difficult one." },
+  { level: 7, title: "The Soft Saboteur", body: "Not every threat arrives like hunger. Some arrive as permission, as reward creep, as the phrase close enough whispered at the wrong hour." },
+  { level: 8, title: "Winter Supply Routes", body: "The system starts feeding itself. Routines shorten decision time. Recovery gets quicker. Mistakes stop expanding into campaigns of their own." },
+  { level: 9, title: "The Hidden Annex", body: "A sealed part of the outpost opens. Behind it are reserves you thought were gone: patience, restraint, and a talent for boring excellence." },
+  { level: 10, title: "Weatherproofing", body: "You no longer need ideal conditions to act like yourself. Bad timing, social meals, poor sleep, and long days lose some of their power." },
+  { level: 11, title: "The Watchtower", body: "From higher ground you can finally see the real enemy clearly. It was never food alone. It was drift, haste, and the ease of forgetting." },
+  { level: 12, title: "The Counteroffensive", body: "Old reflexes still raid the edges, but they no longer own the center. The outpost now answers pressure with policy, not improvisation." },
+  { level: 13, title: "The Long Signal", body: "Your routines begin reaching farther than today. The place is starting to influence tomorrow before tomorrow even arrives." },
+  { level: 14, title: "The Deep Stores", body: "Here is the twist: discipline was never the cage. It was the pantry, the fuel line, the quiet reserve that lets the whole system keep moving." },
+  { level: 15, title: "Stone Against Entropy", body: "The outpost is no longer merely surviving. It has become a stronghold of honest numbers, controlled responses, and momentum that does not need applause." },
 ];
 
 let state = loadState();
@@ -77,6 +73,9 @@ const addRewardButton = document.getElementById("add-reward");
 
 const statusMessage = document.getElementById("status-message");
 const todayCard = document.getElementById("today-card");
+const updateBanner = document.getElementById("update-banner");
+const updateBannerText = document.getElementById("update-banner-text");
+const refreshAppButton = document.getElementById("refresh-app");
 const summaryStats = document.getElementById("summary-stats");
 const guardrailList = document.getElementById("guardrail-list");
 const chartWrap = document.getElementById("chart-wrap");
@@ -109,13 +108,55 @@ function initialize() {
   rewardTypeInput.addEventListener("change", renderRewardValueVisibility);
   exportJsonButton.addEventListener("click", exportJson);
   importJsonInput.addEventListener("change", importJson);
+  refreshAppButton.addEventListener("click", forceRefreshApp);
 
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
-  }
+  registerServiceWorker();
 
   renderRewardValueVisibility();
   render();
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) {
+    return;
+  }
+
+  navigator.serviceWorker.register(`sw.js?v=${APP_VERSION}`).then((registration) => {
+    if (registration.waiting) {
+      showUpdateBanner("A newer build is ready. Refresh to switch the installed app to the latest version.");
+    }
+
+    registration.addEventListener("updatefound", () => {
+      const installing = registration.installing;
+      if (!installing) {
+        return;
+      }
+      installing.addEventListener("statechange", () => {
+        if (installing.state === "installed" && navigator.serviceWorker.controller) {
+          showUpdateBanner("Update available. Refresh to load the newest build.");
+        }
+      });
+    });
+
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      window.location.reload();
+    });
+  }).catch(() => {});
+}
+
+function showUpdateBanner(message) {
+  updateBannerText.textContent = message;
+  updateBanner.classList.remove("is-hidden");
+}
+
+function forceRefreshApp() {
+  navigator.serviceWorker.getRegistration().then((registration) => {
+    if (registration?.waiting) {
+      registration.waiting.postMessage({ type: "SKIP_WAITING" });
+      return;
+    }
+    window.location.reload();
+  });
 }
 
 function loadState() {
@@ -139,12 +180,13 @@ function loadState() {
 
 function createEmptyState() {
   return {
-    version: 3,
+    version: 4,
     settings: { ...defaultSettings },
     entries: {},
     rewards: [],
     meta: {
       lastExportAt: null,
+      lowestAvgWeightRewarded: null,
     },
   };
 }
@@ -164,8 +206,9 @@ function migrateState(parsed, sourceKey) {
   // so existing local data remains usable after upgrading the app.
   const legacyEntries = parsed.entries || buildLegacyEntries(parsed);
   const entries = {};
+  const sourceVersion = Number(parsed.version || 0);
   for (const [dateKey, rawEntry] of Object.entries(legacyEntries || {})) {
-    entries[dateKey] = migrateEntry(dateKey, rawEntry);
+    entries[dateKey] = migrateEntry(dateKey, rawEntry, sourceVersion);
   }
 
   const rewards = Array.isArray(parsed.rewards)
@@ -174,10 +217,11 @@ function migrateState(parsed, sourceKey) {
 
   const meta = {
     lastExportAt: parsed.meta?.lastExportAt || parsed.lastExportAt || null,
+    lowestAvgWeightRewarded: parsed.meta?.lowestAvgWeightRewarded ?? null,
   };
 
   const migrated = {
-    version: 3,
+    version: 4,
     settings,
     entries,
     rewards,
@@ -231,11 +275,11 @@ function buildLegacyEntries(parsed) {
   return legacy;
 }
 
-function migrateEntry(dateKey, rawEntry) {
+function migrateEntry(dateKey, rawEntry, sourceVersion = 4) {
   const migratedFood = createEmptyFoodEntry();
   for (const slot of mealSlots) {
     const value = rawEntry?.food?.[slot];
-    migratedFood[slot] = normalizeFoodValue(value);
+    migratedFood[slot] = normalizeFoodValue(value, sourceVersion);
   }
 
   return {
@@ -276,7 +320,7 @@ function migrateReward(reward) {
   };
 }
 
-function normalizeFoodValue(value) {
+function normalizeFoodValue(value, sourceVersion = 4) {
   if (value === null || value === undefined || value === "") {
     return null;
   }
@@ -284,8 +328,11 @@ function normalizeFoodValue(value) {
   if (Number.isNaN(numeric)) {
     return null;
   }
-  if (numeric < 0 || numeric > 4) {
+  if (numeric < 0 || numeric > 5) {
     return null;
+  }
+  if (numeric === 4 && sourceVersion < 4) {
+    return 5;
   }
   return numeric;
 }
@@ -560,12 +607,16 @@ function computeSummary() {
 
   const timelineFilled = buildFilledTimeline(loggedEntries);
   const totalXp = loggedEntries.reduce((sum, day) => sum + day.totalScore + day.bonusXp, 0);
-  const level = Math.max(1, Math.floor(totalXp / 250) + 1);
+  const level = getLevelFromXp(totalXp);
+  const nextLevel = level + 1;
+  const nextLevelXp = getXpForLevel(nextLevel);
+  const xpToNext = getXpToNextLevel(totalXp);
   const regularStreak = calculateStreak(timelineFilled, (day) => day.totalScore >= 55);
   const eliteStreak = calculateStreak(timelineFilled, (day) => day.totalScore >= 70);
   const bestRegularStreak = calculateBestStreak(timelineFilled, (day) => day.totalScore >= 55);
   const bestEliteStreak = calculateBestStreak(timelineFilled, (day) => day.totalScore >= 70);
   const weekly = computeWeeklyMetrics(loggedEntries);
+  syncRewardMilestones(weekly);
   const rewards = state.rewards.map((reward) => ({
     ...reward,
     unlocked: isRewardUnlocked(reward, { level, regularStreak, loggedEntries, weekly }),
@@ -576,6 +627,9 @@ function computeSummary() {
     timelineFilled,
     totalXp,
     level,
+    nextLevel,
+    nextLevelXp,
+    xpToNext,
     regularStreak,
     eliteStreak,
     bestRegularStreak,
@@ -583,6 +637,7 @@ function computeSummary() {
     today: scoreDay(getDraftEntry()),
     weekly,
     rewards,
+    bossFight: getBossFight({ loggedEntries, weekly, regularStreak, eliteStreak }),
   };
 }
 
@@ -615,10 +670,10 @@ function scoreDay(entry) {
   const answeredMeals = mealSlots.filter((slot) => entry.food[slot] !== null);
   const scoredMeals = answeredMeals.filter((slot) => foodOptions[entry.food[slot]].quality !== null);
   const foodAverage = scoredMeals.length
-    ? scoredMeals.reduce((sum, slot) => sum + foodOptions[entry.food[slot]].quality, 0) / scoredMeals.length
+    ? scoredMeals.reduce((sum, slot) => sum + (foodOptions[entry.food[slot]].score ?? foodOptions[entry.food[slot]].quality ?? 0), 0) / scoredMeals.length
     : 0;
-  const foodCompletionBonus = coreMealSlots.every((slot) => entry.food[slot] !== null) ? 3 : 0;
-  const foodPoints = Math.min(25, Math.round(foodAverage * 22) + foodCompletionBonus);
+  const foodCompletionBonus = coreMealSlots.every((slot) => entry.food[slot] !== null) ? 2 : 0;
+  const foodPoints = Math.min(25, Math.round(foodAverage * 23) + foodCompletionBonus);
 
   const bodyMetricPoints = (entry.weight != null ? 5 : 0) + (entry.bodyFat != null ? 5 : 0);
   const habitPoints =
@@ -658,6 +713,18 @@ function getGoalBonus(entry, answeredMealsCount) {
     bonus += 10;
   }
   return bonus;
+}
+
+function getXpForLevel(level) {
+  return Math.max(0, (level - 1) * 250);
+}
+
+function getLevelFromXp(xp) {
+  return Math.max(1, Math.floor(xp / 250) + 1);
+}
+
+function getXpToNextLevel(xp) {
+  return getXpForLevel(getLevelFromXp(xp) + 1) - xp;
 }
 
 function buildFilledTimeline(loggedEntries) {
@@ -780,15 +847,26 @@ function isRewardUnlocked(reward, context) {
     case "logged_days":
       return context.loggedEntries.length >= reward.criteriaValue;
     case "lowest_avg_weight":
-      return context.weekly.isNewLowestWeightAverage;
+      return state.meta.lowestAvgWeightRewarded != null && reward.claimed === false;
     default:
       return false;
+  }
+}
+
+function syncRewardMilestones(weekly) {
+  if (weekly.isNewLowestWeightAverage && weekly.latestWeeklyWeightAverage != null) {
+    const priorRewarded = state.meta.lowestAvgWeightRewarded;
+    if (priorRewarded == null || weekly.latestWeeklyWeightAverage <= priorRewarded - 0.2) {
+      state.meta.lowestAvgWeightRewarded = weekly.latestWeeklyWeightAverage;
+      saveState();
+    }
   }
 }
 
 function renderTodayCard(summary) {
   const today = summary.today;
   const selectedDateLabel = formatDisplayDate(getSelectedDateKey());
+  const isMaintenance = state.settings.mode === "maintenance";
   const quickStats = [
     { label: "Score", value: `${today.totalScore}` },
     { label: "XP", value: `+${today.totalScore + today.bonusXp}` },
@@ -808,11 +886,23 @@ function renderTodayCard(summary) {
         <div class="today-kicker">${escapeHtml(selectedDateLabel)}</div>
         <div class="today-score">${today.totalScore}</div>
         <div class="today-copy">Win day at 70+. Solid day at 55+. Regular streak survives solid days; elite streak needs wins.</div>
+        <div class="xp-progress-card">
+          <div class="xp-line">Level ${summary.level} | ${summary.totalXp.toLocaleString()} XP total</div>
+          <div class="xp-line">Next level at ${summary.nextLevelXp.toLocaleString()} XP</div>
+          <div class="xp-line">${summary.xpToNext.toLocaleString()} XP to go</div>
+          <div class="xp-progress"><span style="width:${Math.max(0, Math.min(100, ((summary.totalXp - getXpForLevel(summary.level)) / 250) * 100))}%"></span></div>
+        </div>
+        <div class="boss-fight-card">
+          <div class="boss-title">Boss Fight: ${escapeHtml(summary.bossFight.title)}</div>
+          <div class="boss-copy">${escapeHtml(summary.bossFight.body)}</div>
+        </div>
         <div class="quick-fields">
-          <label class="quick-field">
-            <span>Date</span>
-            <input id="today-date" type="date" value="${escapeHtml(getSelectedDateKey())}">
-          </label>
+          ${isMaintenance ? "" : `
+            <label class="quick-field">
+              <span>Date</span>
+              <input id="today-date" type="date" value="${escapeHtml(getSelectedDateKey())}">
+            </label>
+          `}
           <label class="quick-field">
             <span>Steps</span>
             <input id="today-steps" type="number" min="0" max="100000" step="100" value="${today.steps || ""}">
@@ -846,7 +936,7 @@ function renderTodayCard(summary) {
           </article>
         `).join("")}
       </div>
-      <div class="today-breakdown">
+      <div class="today-breakdown ${isMaintenance ? "is-hidden" : ""}">
         <div class="score-row"><span>Steps</span><span>${today.stepPoints}/25</span></div>
         <div class="score-row"><span>Exercise</span><span>${today.exercisePoints}/20</span></div>
         ${today.mode === "full" ? `<div class="score-row"><span>Food</span><span>${today.foodPoints}/25</span></div>` : ""}
@@ -906,6 +996,7 @@ function renderWeeklySummary(summary) {
     statCard(`Level ${summary.level}`, `${summary.totalXp.toLocaleString()} XP`, `${state.settings.displayName}'s total campaign experience`),
     statCard("Regular Streak", `${summary.regularStreak} days`, `Best: ${summary.bestRegularStreak}`),
     statCard("Elite Streak", `${summary.eliteStreak} days`, `Best: ${summary.bestEliteStreak}`),
+    statCard("Next Level", `${summary.nextLevelXp.toLocaleString()} XP`, `${summary.xpToNext.toLocaleString()} XP remaining`),
     statCard("7-day Avg Score", formatMaybe(summary.weekly.scoreAverage), `${summary.weekly.loggedDays} days logged this week`),
     statCard("7-day Avg Weight", formatMaybe(summary.weekly.weightAverage, 1), `Goal: ${state.settings.weightGoal}`),
     statCard("7-day Avg Body Fat", formatMaybe(summary.weekly.bodyFatAverage, 1, "%"), `Goal: ${state.settings.bodyFatGoal}%`),
@@ -959,14 +1050,20 @@ function renderLineChart(title, data, key, goal, movingAverageSeries = []) {
   const sevenAgo = data.length > 7 ? data[data.length - 8]?.[key] ?? null : null;
   const change = latest != null && sevenAgo != null ? latest - sevenAgo : null;
   const currentAverage = movingAverageSeries.length ? movingAverageSeries[movingAverageSeries.length - 1].value : null;
+  const seriesStats = getSeriesStats(data, key);
+  const decimals = key === "totalScore" ? 0 : 1;
 
   return `
     <div class="chart-card">
       <div class="chart-title">${escapeHtml(title)}</div>
       <div class="chart-summary">
-        <span>Latest: ${formatMaybe(latest, key === "totalScore" ? 0 : 1)}</span>
-        <span>vs 7 days ago: ${formatSigned(change, key === "totalScore" ? 0 : 1)}</span>
-        <span>7-day avg: ${formatMaybe(currentAverage, key === "totalScore" ? 0 : 1)}</span>
+        <span>Latest: ${formatMaybe(latest, decimals)}</span>
+        <span>Historic max: ${formatMaybe(seriesStats.max, decimals)}</span>
+        <span>Historic min: ${formatMaybe(seriesStats.min, decimals)}</span>
+        <span>Total change: ${formatSigned(seriesStats.totalChange, decimals)}</span>
+        <span>${escapeHtml(seriesStats.recentLabel)}: ${formatSigned(seriesStats.recentChange, decimals)}</span>
+        <span>7-day avg: ${formatMaybe(currentAverage, decimals)}</span>
+        <span>vs 7 days ago: ${formatSigned(change, decimals)}</span>
       </div>
       <svg viewBox="0 0 ${width} ${height}" class="trend-chart" role="img" aria-label="${escapeHtml(title)} trend">
         <line x1="${padding}" y1="${goalY}" x2="${width - padding}" y2="${goalY}" class="goal-line"></line>
@@ -1007,6 +1104,89 @@ function buildGuardrails(summary) {
     messages.push("Weekly trend is steady. Keep the system simple and consistent.");
   }
   return messages;
+}
+
+function getBossFight(context) {
+  const recent = context.loggedEntries.slice(-5);
+  if (context.loggedEntries.length < 3) {
+    return {
+      title: "The Fog of Drift",
+      body: "The main threat is not failure yet. It is vagueness. Log a few clean days so the map stops lying by omission.",
+    };
+  }
+
+  const last = recent[recent.length - 1];
+  const answeredMeals = recent.map((day) => day.answeredMeals?.length || 0);
+  const loggingDays = context.weekly.loggedDays;
+
+  if (loggingDays < 4) {
+    return {
+      title: "The Vanishing Trail",
+      body: "Awareness is thinning out. The danger is not one bad choice; it is losing contact with the pattern long enough for drift to take the gate.",
+    };
+  }
+
+  if (context.regularStreak >= 5) {
+    return {
+      title: "False Summit",
+      body: "Several good days can whisper that structure is optional now. Keep the rails up a little longer than your confidence says you need to.",
+    };
+  }
+
+  if (recent.some((day) => day.foodPoints <= 6 && day.mode === "full")) {
+    return {
+      title: "Reward Creep",
+      body: "A rough meal can recruit company fast. Watch for the old instinct to turn one indulgence into an all-evening permission slip.",
+    };
+  }
+
+  if (recent.some((day) => day.exerciseMinutes >= state.settings.exerciseGoal && day.habitPoints < 10)) {
+    return {
+      title: "The Easy Extra",
+      body: "High activity can create fake moral credit. Do not let movement quietly negotiate away meal structure or portion awareness.",
+    };
+  }
+
+  if (last.weight != null && context.weekly.latestWeightAverage != null && last.weight < context.weekly.latestWeightAverage) {
+    return {
+      title: "Quiet Rationalization",
+      body: "A strong weigh-in can make the perimeter feel safer than it is. Guard against the subtle idea that today earned a looser system tomorrow.",
+    };
+  }
+
+  return {
+    title: "The Fog of Close Enough",
+    body: "The current risk is not collapse. It is softening standards by a few small degrees until the whole map tilts. Stay exact where it matters.",
+  };
+}
+
+function getSeriesStats(data, key) {
+  if (!data.length) {
+    return {
+      max: null,
+      min: null,
+      totalChange: null,
+      recentChange: null,
+      recentLabel: "Recent change",
+    };
+  }
+
+  const values = data.map((item) => item[key]);
+  const first = values[0];
+  const last = values[values.length - 1];
+  const latestDate = new Date(`${data[data.length - 1].date}T12:00:00`);
+  const cutoff = new Date(latestDate);
+  cutoff.setDate(cutoff.getDate() - 30);
+  const recentWindow = data.filter((item) => new Date(`${item.date}T12:00:00`) >= cutoff);
+  const recentStart = recentWindow.length ? recentWindow[0][key] : first;
+
+  return {
+    max: Math.max(...values),
+    min: Math.min(...values),
+    totalChange: last - first,
+    recentChange: recentWindow.length ? last - recentStart : null,
+    recentLabel: recentWindow.length >= 30 ? "Last 30 days" : `Last ${recentWindow.length || 1} entries`,
+  };
 }
 
 function renderRewards(summary) {

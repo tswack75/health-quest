@@ -1,11 +1,11 @@
-const CACHE_NAME = "health-quest-v3-1-0";
+const APP_VERSION = "4.0.0";
+const CACHE_NAME = `health-quest-${APP_VERSION}`;
 const APP_FILES = [
   "./",
-  "./index.html",
-  "./styles.css",
-  "./app.js",
-  "./manifest.json",
-  "./sw.js",
+  "./index.html?v=4.0.0",
+  "./styles.css?v=4.0.0",
+  "./app.js?v=4.0.0",
+  "./manifest.json?v=4.0.0",
 ];
 
 self.addEventListener("install", (event) => {
@@ -16,10 +16,16 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
-    ).then(() => self.clients.claim())
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then(() => self.clients.claim())
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (event) => {
@@ -39,13 +45,15 @@ self.addEventListener("fetch", (event) => {
 
   if (isAppShellAsset) {
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: "no-store" })
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          if (response && response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
           return response;
         })
-        .catch(() => caches.match(event.request))
+        .catch(() => caches.match(event.request).then((cached) => cached || fetch(event.request)))
     );
     return;
   }

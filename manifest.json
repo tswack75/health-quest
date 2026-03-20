@@ -1,10 +1,11 @@
 {
   "name": "Health Quest",
   "short_name": "Health Quest",
-  "start_url": "./index.html",
+  "id": "health-quest-v4-0-0",
+  "start_url": "./index.html?v=4.0.0",
   "display": "standalone",
   "background_color": "#f6efe4",
   "theme_color": "#0d3b66",
-  "description": "A local-first daily health tracker with XP, levels, rewards, and trends.",
+  "description": "A local-first daily health tracker with XP, levels, maintenance mode, and trend visibility.",
   "icons": []
 }

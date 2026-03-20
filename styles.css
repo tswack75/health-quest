@@ -1,3 +1,10 @@
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 :root {
   --bg: #f6efe4;
   --bg-deep: #eadfce;
@@ -28,12 +35,14 @@ body {
     radial-gradient(circle at top right, rgba(42, 157, 143, 0.18), transparent 28%),
     linear-gradient(180deg, #f8f3ea 0%, var(--bg) 52%, var(--bg-deep) 100%);
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 .app-shell {
-  width: min(1180px, calc(100vw - 24px));
+  width: min(1180px, 100%);
   margin: 0 auto;
-  padding: 16px 0 40px;
+  padding: max(12px, env(safe-area-inset-top)) 12px calc(40px + env(safe-area-inset-bottom));
+  overflow-x: clip;
 }
 
 .hero,
@@ -52,6 +61,15 @@ body {
 
 body.maintenance-mode .hero {
   background: rgba(255, 252, 246, 0.78);
+}
+
+.hero-theme {
+  margin-bottom: 10px;
+  color: var(--brand);
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .eyebrow {
@@ -80,6 +98,7 @@ h1 {
 .hero-text {
   max-width: 65ch;
   color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 button,
@@ -115,6 +134,21 @@ button,
   gap: 20px;
 }
 
+.main-grid > *,
+.today-grid > *,
+.today-stats,
+.quick-fields,
+.today-habits,
+.food-row,
+.food-options,
+.chart-wrap,
+.chart-card,
+.reward-card,
+.day-card,
+.stat-card {
+  min-width: 0;
+}
+
 .panel {
   padding: 20px;
   min-width: 0;
@@ -145,6 +179,7 @@ button,
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .panel-header {
@@ -237,6 +272,7 @@ button,
   margin-bottom: 14px;
   color: var(--muted);
   font-size: 0.9rem;
+  overflow-wrap: anywhere;
 }
 
 .food-log,
@@ -320,6 +356,53 @@ button,
   color: white;
 }
 
+.update-banner,
+.boss-fight-card,
+.xp-progress-card {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(13, 59, 102, 0.07);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.boss-title {
+  font-size: 0.88rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.boss-copy,
+.xp-line {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.xp-progress {
+  margin-top: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(13, 59, 102, 0.1);
+  overflow: hidden;
+}
+
+.xp-progress span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--brand-2), var(--brand-3));
+}
+
 .today-grid {
   display: grid;
   grid-template-columns: 1.1fr 1fr 1fr;
@@ -374,6 +457,7 @@ button,
 
 .quick-field input {
   width: 100%;
+  max-width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -435,6 +519,7 @@ button,
   margin-top: 10px;
   color: var(--muted);
   font-size: 0.92rem;
+  overflow-wrap: anywhere;
 }
 
 .metric-pill {
@@ -447,7 +532,9 @@ button,
 
 .trend-chart {
   width: 100%;
+  max-width: 100%;
   height: auto;
+  display: block;
 }
 
 .chart-summary {
@@ -457,6 +544,7 @@ button,
   color: var(--muted);
   font-size: 0.88rem;
   margin: 8px 0 10px;
+  overflow-wrap: anywhere;
 }
 
 .goal-line {
@@ -518,6 +606,7 @@ button,
   padding: 18px;
   background: rgba(13, 59, 102, 0.04);
   border-radius: var(--radius-lg);
+  overflow-wrap: anywhere;
 }
 
 .is-hidden {
@@ -562,11 +651,16 @@ body.maintenance-mode .today-breakdown {
   .today-grid {
     grid-template-columns: 1fr;
   }
+
+  .update-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 @media (max-width: 640px) {
   .app-shell {
-    width: min(100vw - 16px, 100%);
+    width: 100%;
     padding-top: 12px;
   }
 
@@ -592,5 +686,10 @@ body.maintenance-mode .today-breakdown {
 
   .app-footer {
     flex-direction: column;
+  }
+
+  .food-option {
+    min-width: 66px;
+    padding: 8px 10px;
   }
 }
