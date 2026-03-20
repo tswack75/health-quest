@@ -1,4 +1,4 @@
-const CACHE_NAME = "health-quest-v2";
+const CACHE_NAME = "health-quest-v3-1-0";
 const APP_FILES = [
   "./",
   "./index.html",
