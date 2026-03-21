@@ -21,22 +21,45 @@ const defaultSettings = {
   bodyFatGoal: 20,
 };
 
+const campaignMeta = {
+  title: "The Breakwater Station",
+  subtitle: "A long campaign against drift, decay, and the easy surrender of good ground.",
+  themeLine: "No dramatic rescue is coming. The work itself is the rescue.",
+};
+
 const storyChapters = [
-  { level: 1, title: "Ash Gate", body: "The outpost is still standing, but only barely. Inventory is bad, the walls have soft spots, and drift has been moving through the place like weather." },
-  { level: 2, title: "The First Ledger", body: "You do not begin with glory. You begin by counting honestly. The first stable record changes the outpost more than any speech ever could." },
-  { level: 3, title: "Quiet Repairs", body: "Small corrections start holding. A meal contained here, a walk taken there, one less overreaction after a messy day. The map is not cleaner yet, but it is less chaotic." },
-  { level: 4, title: "False Urgency", body: "A courier arrives carrying the old lie: do everything at once. You decline. The outpost survives not by panic, but by repeatable decisions." },
-  { level: 5, title: "North Wall Reinforced", body: "Structure begins to show. The wall that used to buckle after one bad night now holds through weather, noise, and convenience." },
-  { level: 6, title: "The Reservoir", body: "You discover something useful: consistency stores energy. The calm day you almost dismissed is now carrying the difficult one." },
-  { level: 7, title: "The Soft Saboteur", body: "Not every threat arrives like hunger. Some arrive as permission, as reward creep, as the phrase close enough whispered at the wrong hour." },
-  { level: 8, title: "Winter Supply Routes", body: "The system starts feeding itself. Routines shorten decision time. Recovery gets quicker. Mistakes stop expanding into campaigns of their own." },
-  { level: 9, title: "The Hidden Annex", body: "A sealed part of the outpost opens. Behind it are reserves you thought were gone: patience, restraint, and a talent for boring excellence." },
-  { level: 10, title: "Weatherproofing", body: "You no longer need ideal conditions to act like yourself. Bad timing, social meals, poor sleep, and long days lose some of their power." },
-  { level: 11, title: "The Watchtower", body: "From higher ground you can finally see the real enemy clearly. It was never food alone. It was drift, haste, and the ease of forgetting." },
-  { level: 12, title: "The Counteroffensive", body: "Old reflexes still raid the edges, but they no longer own the center. The outpost now answers pressure with policy, not improvisation." },
-  { level: 13, title: "The Long Signal", body: "Your routines begin reaching farther than today. The place is starting to influence tomorrow before tomorrow even arrives." },
-  { level: 14, title: "The Deep Stores", body: "Here is the twist: discipline was never the cage. It was the pantry, the fuel line, the quiet reserve that lets the whole system keep moving." },
-  { level: 15, title: "Stone Against Entropy", body: "The outpost is no longer merely surviving. It has become a stronghold of honest numbers, controlled responses, and momentum that does not need applause." },
+  { level: 1, title: "Survey Mark", subtitle: "The first honest measurement", body: "The Station is not ruined, just weathered. The outer walls still stand, but the gauges are unreliable and old habits move like fog through the corridors. The first task is not repair. It is measurement. You place the first survey mark and decide, without drama, to stop guessing." },
+  { level: 2, title: "The Sounding Line", subtitle: "Learning the depth beneath the surface", body: "At first the water looks calm enough. But calm water lies. You lower a sounding line and learn what is really there: hidden depth, buried drag, accumulated drift. Nothing glamorous happens. Still, the map gets better. That is how competent recoveries begin." },
+  { level: 3, title: "Routine Watch", subtitle: "Small checks prevent large failures", body: "A station does not fail all at once. It softens by degrees. Bolts loosen. Doors stick. Crews stop noticing. So you begin the watch: routine checks, early corrections, no speeches. The place does not become impressive overnight. It becomes dependable." },
+  { level: 4, title: "Cold-Weather Systems", subtitle: "Building habits that hold in bad conditions", body: "Any plan works when the weather is easy. The problem is never the easy day. The Station needs systems that hold in wind, distraction, celebration, fatigue, and long afternoons when no one feels particularly noble. You begin building for weather, not for mood." },
+  { level: 5, title: "The Hidden Load", subtitle: "Not all weight is visible", body: "You discover that the Station has been carrying more than anyone admitted. Deferred maintenance. Old stress. Misleading comfort. Quiet overages that looked harmless because they were familiar. The fix is not punishment. It is redistribution: less waste, more support, better load paths." },
+  { level: 6, title: "Breakwater Repairs", subtitle: "Strength is built at the edge", body: "The waves do their work at the boundary first. The breakwater takes the hit so the harbor can stay calm. You begin repairs there: the margins, the transitions, the hours that used to drift. What seemed minor turns out to be structural. Protect the edge and the whole harbor changes." },
+  { level: 7, title: "False Summit", subtitle: "Early success is not the finish line", body: "The Station improves, and with improvement comes a familiar danger: the thought that the hard part is over. It is not. Early gains are real, but they are not yet permanent. This chapter teaches restraint in victory. Do not celebrate by reopening the leak." },
+  { level: 8, title: "The Long Wall", subtitle: "Quiet competence where no one applauds", body: "This part of the campaign is less exciting and more important. You are not discovering the Station now. You are proving you can keep it. The long wall gets rebuilt stone by stone, and most days there is no audience for the work. That is fine. Enduring structures are not built for applause." },
+  { level: 9, title: "The Archive Room", subtitle: "Patterns replace guesswork", body: "Old logs, old maps, old failures—once scattered—begin to make sense together. What felt random was not random. The Station has rhythms. Weak points. Conditions under which drift reappears. You are no longer reacting in the dark. You are learning the behavior of the whole system." },
+  { level: 10, title: "Harbor Discipline", subtitle: "Order without rigidity", body: "A good harbor is not chaos and it is not prison. It has lanes, priorities, and enough flexibility to handle real weather. Your discipline begins to mature here. It is no longer fragile, no longer theatrical. You can accommodate a storm, a feast, a delayed day, and still keep the structure sound." },
+  { level: 11, title: "The Inland Fleet", subtitle: "Momentum becomes infrastructure", body: "What once felt like effort now starts to feel like capacity. The Station can move more, recover faster, and hold shape under demand. You are not just repairing damage anymore. You are expanding capability. The harbor that once barely held is beginning to support traffic." },
+  { level: 12, title: "Saboteur Weather", subtitle: "The old reflexes return disguised as reason", body: "Drift gets smarter when it starts losing. It no longer arrives as obvious collapse. It comes dressed as harmless exceptions, deserved rewards, efficient shortcuts, and the soft logic of ‘close enough.’ This chapter is not about fear. It is about recognition. The saboteur usually sounds reasonable." },
+  { level: 13, title: "Deep Foundation", subtitle: "Building below the visible line", body: "The strongest work is often the least visible. Below the platform, below the wall, below the praise—there are anchors, piles, and buried systems holding everything upright. You are building that now: the kind of strength that remains even when motivation is absent and weather is unfriendly." },
+  { level: 14, title: "Winter Harbor", subtitle: "Keeping the station alive in lean seasons", body: "Every serious campaign reaches a cold stretch. Progress slows. The water hardens. The work feels less rewarding. But winter does not mean failure. It means stewardship. This is where shallow systems quit and durable ones prove themselves. You keep the harbor open anyway." },
+  { level: 15, title: "The Second Map", subtitle: "You are no longer working from the old assumptions", body: "At some point you realize the original map is obsolete. The routes, tolerances, and warnings that once defined the Station no longer fit the reality on the ground. You issue a second map: not a fantasy, not a reinvention—an updated truth built from earned evidence." },
+  { level: 16, title: "The Lift Bridge", subtitle: "Strength that moves when needed", body: "Some structures fail because they are weak. Others fail because they are rigid. The Lift Bridge teaches another kind of strength: the ability to rise, adjust, and still return to alignment. Social meals, celebrations, travel, fatigue, and imperfect days are not breaches. They are load cases." },
+  { level: 17, title: "Quiet Season, Strong Season", subtitle: "Less drama, more proof", body: "This is the chapter where the campaign stops looking dramatic from the outside. There are fewer visible victories, but more structural certainty. The walls do not need to announce themselves. The harbor does not need to shout. Quiet seasons often hold the strongest proof." },
+  { level: 18, title: "The Unseen Current", subtitle: "Success creates its own risks", body: "When the Station becomes reliable, a new current appears beneath it: complacency. Not collapse. Not chaos. Just the subtle belief that because the structure is stronger, the standards can soften. This chapter reminds you that the current beneath a stable harbor can still move a ship off line." },
+  { level: 19, title: "Signal Fires on the Shore", subtitle: "The station begins to guide others", body: "A restored harbor does more than protect itself. It becomes a signal point. Others notice the steadiness, the practical order, the lack of wasted motion. You do not need to preach. The signal travels because the structure is visible from a distance." },
+  { level: 20, title: "Master of the Breakwater", subtitle: "Not finished-established", body: "There is no final cinematic victory here. No trumpet, no magical transformation, no permanent exemption from maintenance. Instead there is something better: establishment. The Breakwater Station now holds because you hold it. The campaign continues, but it is no longer fragile. The harbor is yours to keep." },
+];
+
+const bossFightLibrary = [
+  { key: "false_summit", title: "Boss Fight: False Summit", body: "A good weigh-in can make a man careless. The threat today is not failure. It is the soft thought that the hard part is over. Hold the line. Early success is a checkpoint, not a pardon." },
+  { key: "reward_creep", title: "Boss Fight: Reward Creep", body: "The danger is not one planned indulgence. The danger is the second one that quietly claims to belong with it. Watch the stacking instinct. One reward is a choice. A chain of them is drift in disguise." },
+  { key: "quiet_rationalization", title: "Boss Fight: Quiet Rationalization", body: "Nothing dramatic is trying to beat you today. Just a calm internal voice offering small exceptions that add up. Be wary of arguments that sound reasonable mainly because they are familiar." },
+  { key: "the_easy_extra", title: "Boss Fight: The Easy Extra", body: "You are not at war with hunger. You are watching for the unnecessary addition: the extra handful, the automatic side, the dessert that arrives because it is near. The easy extra has sunk more campaigns than open rebellion." },
+  { key: "fog_of_close_enough", title: "Boss Fight: The Fog of 'Close Enough'", body: "Today's threat is blur. Logging less carefully. Estimating too generously. Letting the edges go soft because the general direction feels good. Fog does not wreck a harbor in one moment. It slowly makes navigation sloppy." },
+  { key: "drift_after_victory", title: "Boss Fight: Drift After Victory", body: "A few strong days in a row can tempt you to loosen the bolts early. Don't. Stability is not declared; it is demonstrated repeatedly. Stay boring. Boring is how walls survive weather." },
+  { key: "social_current", title: "Boss Fight: Social Current", body: "Meals with other people change the current. Portions drift. Attention scatters. Signals get noisy. Your task is not to refuse the occasion. It is to remain captain of your own plate while the harbor gets crowded." },
+  { key: "underfuel_overreach", title: "Boss Fight: Underfuel Overreach", body: "Strong movement can create a trap: the belief that effort has earned neglect. Don't confuse activity with immunity. Fuel cleanly, stay honest, and avoid the rebound that follows underfed confidence." },
+  { key: "maintenance_amnesia", title: "Boss Fight: Maintenance Amnesia", body: "When the system starts working, people forget what made it work. Today's threat is not appetite. It is forgetting the value of routine. The station does not stay strong because it once was repaired." },
 ];
 
 let state = loadState();
@@ -637,8 +660,13 @@ function computeSummary() {
     today: scoreDay(getDraftEntry()),
     weekly,
     rewards,
+    currentChapter: getCurrentChapter(level),
     bossFight: getBossFight({ loggedEntries, weekly, regularStreak, eliteStreak }),
   };
+}
+
+function getCurrentChapter(level) {
+  return [...storyChapters].reverse().find((chapter) => level >= chapter.level) || storyChapters[0];
 }
 
 function getDraftEntry() {
@@ -867,6 +895,7 @@ function renderTodayCard(summary) {
   const today = summary.today;
   const selectedDateLabel = formatDisplayDate(getSelectedDateKey());
   const isMaintenance = state.settings.mode === "maintenance";
+  const chapter = summary.currentChapter;
   const quickStats = [
     { label: "Score", value: `${today.totalScore}` },
     { label: "XP", value: `+${today.totalScore + today.bonusXp}` },
@@ -886,6 +915,11 @@ function renderTodayCard(summary) {
         <div class="today-kicker">${escapeHtml(selectedDateLabel)}</div>
         <div class="today-score">${today.totalScore}</div>
         <div class="today-copy">Win day at 70+. Solid day at 55+. Regular streak survives solid days; elite streak needs wins.</div>
+        <div class="chapter-banner">
+          <div class="chapter-label">${escapeHtml(campaignMeta.title)}</div>
+          <div class="chapter-title">${escapeHtml(chapter.title)}</div>
+          <div class="chapter-subtitle">${escapeHtml(chapter.subtitle)}</div>
+        </div>
         <div class="xp-progress-card">
           <div class="xp-line">Level ${summary.level} | ${summary.totalXp.toLocaleString()} XP total</div>
           <div class="xp-line">Next level at ${summary.nextLevelXp.toLocaleString()} XP</div>
@@ -1109,55 +1143,43 @@ function buildGuardrails(summary) {
 function getBossFight(context) {
   const recent = context.loggedEntries.slice(-5);
   if (context.loggedEntries.length < 3) {
-    return {
-      title: "The Fog of Drift",
-      body: "The main threat is not failure yet. It is vagueness. Log a few clean days so the map stops lying by omission.",
-    };
+    return bossFightLibrary.find((item) => item.key === "maintenance_amnesia");
   }
 
   const last = recent[recent.length - 1];
-  const answeredMeals = recent.map((day) => day.answeredMeals?.length || 0);
   const loggingDays = context.weekly.loggedDays;
+  const latestWeight = recent.filter((day) => day.weight != null).slice(-1)[0]?.weight ?? null;
+  const previousWeight = recent.filter((day) => day.weight != null).slice(-2, -1)[0]?.weight ?? null;
+  const highFoodDays = recent.filter((day) => day.mode === "full" && day.foodPoints <= 8).length;
+  const sparseFoodLogging = recent.some((day) => day.mode === "full" && (day.answeredMeals?.length || 0) <= 2);
+  const highActivity = recent.some((day) => day.exerciseMinutes >= state.settings.exerciseGoal * 1.4);
+  const socialPattern = recent.some((day) => /party|birthday|client|dinner|lunch|social|restaurant/i.test(day.notes || ""));
 
-  if (loggingDays < 4) {
-    return {
-      title: "The Vanishing Trail",
-      body: "Awareness is thinning out. The danger is not one bad choice; it is losing contact with the pattern long enough for drift to take the gate.",
-    };
+  if (latestWeight != null && previousWeight != null && latestWeight < previousWeight - 0.5) {
+    return bossFightLibrary.find((item) => item.key === (context.regularStreak >= 4 ? "drift_after_victory" : "false_summit"));
+  }
+
+  if (highFoodDays >= 2) {
+    return bossFightLibrary.find((item) => item.key === "reward_creep");
+  }
+
+  if (socialPattern || loggingDays < 4 || sparseFoodLogging) {
+    return bossFightLibrary.find((item) => item.key === (socialPattern ? "social_current" : "fog_of_close_enough"));
+  }
+
+  if (recent.some((day) => day.mode === "full" && mealSlots.some((slot) => (day.food?.[slot] ?? 0) >= 4))) {
+    return bossFightLibrary.find((item) => item.key === "the_easy_extra");
+  }
+
+  if (highActivity) {
+    return bossFightLibrary.find((item) => item.key === "underfuel_overreach");
   }
 
   if (context.regularStreak >= 5) {
-    return {
-      title: "False Summit",
-      body: "Several good days can whisper that structure is optional now. Keep the rails up a little longer than your confidence says you need to.",
-    };
+    return bossFightLibrary.find((item) => item.key === "drift_after_victory");
   }
 
-  if (recent.some((day) => day.foodPoints <= 6 && day.mode === "full")) {
-    return {
-      title: "Reward Creep",
-      body: "A rough meal can recruit company fast. Watch for the old instinct to turn one indulgence into an all-evening permission slip.",
-    };
-  }
-
-  if (recent.some((day) => day.exerciseMinutes >= state.settings.exerciseGoal && day.habitPoints < 10)) {
-    return {
-      title: "The Easy Extra",
-      body: "High activity can create fake moral credit. Do not let movement quietly negotiate away meal structure or portion awareness.",
-    };
-  }
-
-  if (last.weight != null && context.weekly.latestWeightAverage != null && last.weight < context.weekly.latestWeightAverage) {
-    return {
-      title: "Quiet Rationalization",
-      body: "A strong weigh-in can make the perimeter feel safer than it is. Guard against the subtle idea that today earned a looser system tomorrow.",
-    };
-  }
-
-  return {
-    title: "The Fog of Close Enough",
-    body: "The current risk is not collapse. It is softening standards by a few small degrees until the whole map tilts. Stay exact where it matters.",
-  };
+  return bossFightLibrary.find((item) => item.key === "quiet_rationalization");
 }
 
 function getSeriesStats(data, key) {
@@ -1218,12 +1240,14 @@ function renderRewards(summary) {
 }
 
 function renderStory(summary) {
-  const chapter = [...storyChapters].reverse().find((item) => summary.level >= item.level) || storyChapters[0];
+  const chapter = summary.currentChapter;
   storyCard.innerHTML = `
-    <div class="story-kicker">Chapter for level ${summary.level}</div>
+    <div class="story-kicker">${escapeHtml(campaignMeta.title)}</div>
     <h3>${escapeHtml(chapter.title)}</h3>
+    <p><strong>${escapeHtml(chapter.subtitle)}</strong></p>
     <p>${escapeHtml(chapter.body)}</p>
-    <p>This story still leans on the few things I actually know: you prefer practical systems, lower-friction tools, and something strong enough to survive ordinary life. If you want, we can later theme it around a setting you genuinely care about.</p>
+    <p>${escapeHtml(campaignMeta.subtitle)}</p>
+    <p>${escapeHtml(campaignMeta.themeLine)}</p>
   `;
 }
 

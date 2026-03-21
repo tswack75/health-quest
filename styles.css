@@ -358,7 +358,8 @@ button,
 
 .update-banner,
 .boss-fight-card,
-.xp-progress-card {
+.xp-progress-card,
+.chapter-banner {
   margin-bottom: 12px;
   padding: 12px 14px;
   border-radius: 14px;
@@ -381,6 +382,26 @@ button,
   letter-spacing: 0.12em;
   color: var(--brand);
   font-weight: 700;
+}
+
+.chapter-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--brand);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.chapter-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.chapter-subtitle {
+  color: var(--muted);
+  font-size: 0.92rem;
+  margin-top: 4px;
 }
 
 .boss-copy,
