@@ -305,6 +305,17 @@ button,
   padding: 14px;
 }
 
+.legend-row {
+  grid-template-columns: 44px minmax(0, 1fr);
+  padding: 12px 14px;
+}
+
+.food-legend-copy {
+  color: var(--muted);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .food-label,
 .reward-title,
 .day-title,
@@ -488,6 +499,101 @@ button,
 
 .quick-notes {
   grid-column: 1 / -1;
+}
+
+.today-meals {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.62);
+  display: grid;
+  gap: 10px;
+}
+
+.today-meals-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.today-meals-header span:first-child {
+  color: var(--ink);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.today-meals-hint {
+  overflow-wrap: anywhere;
+}
+
+.today-meal-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.today-meal-label {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--brand);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.today-meal-options {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.today-meal-chip {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid rgba(13, 59, 102, 0.18);
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.today-meal-chip input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.today-meal-chip span {
+  pointer-events: none;
+}
+
+.today-meal-chip.active {
+  background: var(--brand);
+  color: #fffaf1;
+  border-color: var(--brand);
+  box-shadow: 0 10px 22px rgba(13, 59, 102, 0.18);
+}
+
+.today-meal-chip:focus-within {
+  outline: 2px solid rgba(244, 162, 97, 0.65);
+  outline-offset: 2px;
 }
 
 .today-habits {
@@ -699,6 +805,28 @@ body.maintenance-mode .today-breakdown {
   .quick-fields,
   .food-row {
     grid-template-columns: 1fr;
+  }
+
+  .today-meals {
+    padding: 12px;
+  }
+
+  .today-meal-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .today-meal-options {
+    gap: 5px;
+  }
+
+  .today-meal-chip {
+    min-height: 36px;
+    font-size: 0.88rem;
+  }
+
+  .legend-row {
+    grid-template-columns: 36px minmax(0, 1fr);
   }
 
   .panel {

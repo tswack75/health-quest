@@ -466,7 +466,7 @@ function saveDailyEntry() {
     weight: parseOptionalNumber(entryWeightInput.value),
     bodyFat: parseOptionalNumber(entryBodyFatInput.value),
     notes: (entryNotesInput.value || "").trim().slice(0, 120),
-    food: readFoodForm(),
+    food: readFoodForm(getEntry(dateKey).food),
     habits: {
       protein: habitProteinInput.checked,
       produce: habitProduceInput.checked,
@@ -481,43 +481,25 @@ function saveDailyEntry() {
 }
 
 function readFoodForm() {
-  const food = createEmptyFoodEntry();
+  const food = { ...createEmptyFoodEntry(), ...arguments[0] };
   for (const slot of mealSlots) {
-    const selected = foodLog.querySelector(`input[name="food-${slot}"]:checked`);
+    const selected =
+      document.querySelector(`#today-card input[name="today-food-${slot}"]:checked`) ||
+      foodLog.querySelector(`input[name="food-${slot}"]:checked`);
     food[slot] = selected ? normalizeFoodValue(selected.value) : null;
   }
   return food;
 }
 
 function renderFoodLog() {
-  const food = getEntry(getSelectedDateKey()).food;
-
-  foodLog.innerHTML = mealSlots
-    .map((slot) => `
-      <article class="food-row">
-        <div class="food-label">${escapeHtml(capitalize(slot))}</div>
-        <div class="food-options">
-          ${Object.entries(foodOptions).map(([value]) => `
-            <label class="food-option ${Number(value) === food[slot] ? "active" : ""}">
-              <input
-                type="radio"
-                name="food-${escapeHtml(slot)}"
-                value="${value}"
-                ${Number(value) === food[slot] ? "checked" : ""}
-              >
-              <span>${value}<small>${escapeHtml(foodOptions[value].label)}</small></span>
-            </label>
-          `).join("")}
-        </div>
+  foodLog.innerHTML = Object.entries(foodOptions)
+    .map(([value, option]) => `
+      <article class="food-row legend-row">
+        <div class="food-label">${value}</div>
+        <div class="food-legend-copy">${escapeHtml(option.label)}</div>
       </article>
     `)
     .join("");
-
-  for (const input of foodLog.querySelectorAll('input[type="radio"]')) {
-    input.addEventListener("change", syncFoodOptionClasses);
-  }
-
-  syncFoodOptionClasses();
 }
 
 function syncFoodOptionClasses() {
@@ -680,7 +662,7 @@ function getDraftEntry() {
     weight: parseOptionalNumber(entryWeightInput.value),
     bodyFat: parseOptionalNumber(entryBodyFatInput.value),
     notes: (entryNotesInput.value || "").trim().slice(0, 120),
-    food: readFoodForm(),
+    food: readFoodForm(getEntry(dateKey).food),
     habits: {
       protein: habitProteinInput.checked,
       produce: habitProduceInput.checked,
@@ -896,6 +878,7 @@ function renderTodayCard(summary) {
   const selectedDateLabel = formatDisplayDate(getSelectedDateKey());
   const isMaintenance = state.settings.mode === "maintenance";
   const chapter = summary.currentChapter;
+  const todayFood = readFoodForm(today.food);
   const quickStats = [
     { label: "Score", value: `${today.totalScore}` },
     { label: "XP", value: `+${today.totalScore + today.bonusXp}` },
@@ -961,6 +944,32 @@ function renderTodayCard(summary) {
           <label class="checkbox-row compact"><input id="today-habit-stopped" type="checkbox" ${today.habits.stoppedBeforeStuffed ? "checked" : ""}> Stopped before stuffed</label>
           <label class="checkbox-row compact"><input id="today-habit-movement" type="checkbox" ${today.habits.movement ? "checked" : ""}> Movement target</label>
         </div>
+          ${isMaintenance ? "" : `
+            <div class="today-meals">
+              <div class="today-meals-header">
+                <span>Meals</span>
+                <span class="today-meals-hint">Tap a number. Full legend below.</span>
+              </div>
+              ${mealSlots.map((slot) => `
+                <div class="today-meal-row">
+                  <div class="today-meal-label">${escapeHtml(getMealDisplayLabel(slot))}</div>
+                  <div class="today-meal-options">
+                    ${Object.keys(foodOptions).map((value) => `
+                      <label class="today-meal-chip ${Number(value) === todayFood[slot] ? "active" : ""}">
+                      <input
+                        type="radio"
+                        name="today-food-${escapeHtml(slot)}"
+                        value="${value}"
+                        ${Number(value) === todayFood[slot] ? "checked" : ""}
+                      >
+                      <span>${value}</span>
+                    </label>
+                  `).join("")}
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `}
       </div>
       <div class="today-stats">
         ${quickStats.map((item) => `
@@ -981,6 +990,7 @@ function renderTodayCard(summary) {
   `;
 
   wireTodayQuickInputs();
+  wireTodayMealInputs();
 }
 
 function wireTodayQuickInputs() {
@@ -994,6 +1004,14 @@ function wireTodayQuickInputs() {
   syncQuickCheckbox("today-habit-produce", habitProduceInput);
   syncQuickCheckbox("today-habit-stopped", habitStoppedInput);
   syncQuickCheckbox("today-habit-movement", habitMovementInput);
+}
+
+function wireTodayMealInputs() {
+  for (const input of todayCard.querySelectorAll('input[name^="today-food-"]')) {
+    input.addEventListener("change", () => {
+      render();
+    });
+  }
 }
 
 function syncQuickInput(sourceId, targetInput, rerender = false) {
@@ -1387,6 +1405,17 @@ function formatRelativeExport(timestamp) {
 
 function capitalize(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function getMealDisplayLabel(slot) {
+  const labels = {
+    morning: "AM",
+    lunch: "Lunch",
+    afternoon: "PM",
+    dinner: "Dinner",
+    other: "Other",
+  };
+  return labels[slot] || capitalize(slot);
 }
 
 function escapeHtml(value) {
