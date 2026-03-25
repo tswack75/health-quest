@@ -480,13 +480,15 @@ function saveDailyEntry() {
   setStatus(`Saved entry for ${formatDisplayDate(dateKey)}.`);
 }
 
-function readFoodForm() {
-  const food = { ...createEmptyFoodEntry(), ...arguments[0] };
+function readFoodForm(fallbackFood = createEmptyFoodEntry()) {
+  const food = { ...createEmptyFoodEntry(), ...fallbackFood };
   for (const slot of mealSlots) {
     const selected =
       document.querySelector(`#today-card input[name="today-food-${slot}"]:checked`) ||
       foodLog.querySelector(`input[name="food-${slot}"]:checked`);
-    food[slot] = selected ? normalizeFoodValue(selected.value) : null;
+    if (selected) {
+      food[slot] = normalizeFoodValue(selected.value);
+    }
   }
   return food;
 }
@@ -1067,7 +1069,7 @@ function renderCharts(summary) {
   chartWrap.innerHTML = `
     ${renderLineChart("Weight", weightDays, "weight", state.settings.weightGoal, buildRollingAverageSeries(weightDays, "weight"))}
     ${renderLineChart("Body Fat %", bodyFatDays, "bodyFat", state.settings.bodyFatGoal, buildRollingAverageSeries(bodyFatDays, "bodyFat"))}
-    ${renderLineChart("Daily Score", scoreDays, "totalScore", 70)}
+    ${renderLineChart("Daily Score", scoreDays, "totalScore", 70, buildRollingAverageSeries(scoreDays, "totalScore"))}
   `;
 }
 
