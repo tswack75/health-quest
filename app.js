@@ -1,8 +1,35 @@
-const APP_VERSION = "v4.0.0";
+const APP_VERSION = "v4.1.0";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const mealSlots = ["morning", "lunch", "afternoon", "dinner", "other"];
 const coreMealSlots = ["morning", "lunch", "afternoon", "dinner"];
+const scoringWeights = {
+  steps: 30,
+  exercise: 25,
+  food: {
+    total: 30,
+    core: 24,
+    other: 4,
+    completion: 2,
+  },
+  habits: {
+    protein: 3,
+    produce: 3,
+    stoppedBeforeStuffed: 3,
+    movement: 1,
+  },
+  bodyMetrics: {
+    total: 5,
+    weightLogged: 1,
+    bodyFatLogged: 1,
+    bothLoggedBonus: 1,
+    trendBonus: 2,
+  },
+};
+const dayThresholds = {
+  win: 75,
+  solid: 55,
+};
 const foodOptions = {
   0: { label: "Ate nothing / N/A", quality: null, score: 0 },
   1: { label: "On track", quality: 1 },
@@ -203,13 +230,16 @@ function loadState() {
 
 function createEmptyState() {
   return {
-    version: 4,
+    version: 5,
     settings: { ...defaultSettings },
     entries: {},
     rewards: [],
     meta: {
       lastExportAt: null,
       lowestAvgWeightRewarded: null,
+      bestSevenDayAvgWeight: null,
+      lastUnlockedSevenDayAvgWeight: null,
+      lastClaimedSevenDayAvgWeight: null,
     },
   };
 }
@@ -241,10 +271,13 @@ function migrateState(parsed, sourceKey) {
   const meta = {
     lastExportAt: parsed.meta?.lastExportAt || parsed.lastExportAt || null,
     lowestAvgWeightRewarded: parsed.meta?.lowestAvgWeightRewarded ?? null,
+    bestSevenDayAvgWeight: parsed.meta?.bestSevenDayAvgWeight ?? parsed.meta?.lowestAvgWeightRewarded ?? null,
+    lastUnlockedSevenDayAvgWeight: parsed.meta?.lastUnlockedSevenDayAvgWeight ?? parsed.meta?.lowestAvgWeightRewarded ?? null,
+    lastClaimedSevenDayAvgWeight: parsed.meta?.lastClaimedSevenDayAvgWeight ?? null,
   };
 
   const migrated = {
-    version: 4,
+    version: 5,
     settings,
     entries,
     rewards,
@@ -544,9 +577,18 @@ function renderRewardValueVisibility() {
 }
 
 function toggleRewardClaim(rewardId) {
-  state.rewards = state.rewards.map((reward) =>
-    reward.id === rewardId ? { ...reward, claimed: !reward.claimed } : reward
-  );
+  state.rewards = state.rewards.map((reward) => {
+    if (reward.id !== rewardId) {
+      return reward;
+    }
+
+    const nextClaimed = !reward.claimed;
+    if (reward.criteriaType === "lowest_avg_weight" && nextClaimed) {
+      state.meta.lastClaimedSevenDayAvgWeight = state.meta.lastUnlockedSevenDayAvgWeight ?? state.meta.lastClaimedSevenDayAvgWeight;
+    }
+
+    return { ...reward, claimed: nextClaimed };
+  });
   saveState();
   render();
 }
@@ -608,9 +650,10 @@ function render() {
 }
 
 function computeSummary() {
-  const loggedEntries = Object.values(state.entries)
-    .map((entry) => scoreDay(migrateEntry(entry.date, entry)))
+  const orderedEntries = Object.values(state.entries)
+    .map((entry) => migrateEntry(entry.date, entry))
     .sort((a, b) => a.date.localeCompare(b.date));
+  const loggedEntries = orderedEntries.map((entry, index) => scoreDay(entry, { priorEntries: orderedEntries.slice(0, index) }));
 
   const timelineFilled = buildFilledTimeline(loggedEntries);
   const totalXp = loggedEntries.reduce((sum, day) => sum + day.totalScore + day.bonusXp, 0);
@@ -619,9 +662,9 @@ function computeSummary() {
   const nextLevelXp = getXpForLevel(nextLevel);
   const xpToNext = getXpToNextLevel(totalXp);
   const regularStreak = calculateStreak(timelineFilled, (day) => day.totalScore >= 55);
-  const eliteStreak = calculateStreak(timelineFilled, (day) => day.totalScore >= 70);
+  const eliteStreak = calculateStreak(timelineFilled, (day) => day.totalScore >= dayThresholds.win);
   const bestRegularStreak = calculateBestStreak(timelineFilled, (day) => day.totalScore >= 55);
-  const bestEliteStreak = calculateBestStreak(timelineFilled, (day) => day.totalScore >= 70);
+  const bestEliteStreak = calculateBestStreak(timelineFilled, (day) => day.totalScore >= dayThresholds.win);
   const weekly = computeWeeklyMetrics(loggedEntries);
   syncRewardMilestones(weekly);
   const rewards = state.rewards.map((reward) => ({
@@ -641,7 +684,9 @@ function computeSummary() {
     eliteStreak,
     bestRegularStreak,
     bestEliteStreak,
-    today: scoreDay(getDraftEntry()),
+    today: scoreDay(getDraftEntry(), {
+      priorEntries: orderedEntries.filter((entry) => entry.date < getSelectedDateKey()),
+    }),
     weekly,
     rewards,
     currentChapter: getCurrentChapter(level),
@@ -674,46 +719,136 @@ function getDraftEntry() {
   };
 }
 
-function scoreDay(entry) {
-  const dayMode = entry.mode || "full";
-  const stepPoints = Math.round(Math.min(1, (entry.steps || 0) / state.settings.stepGoal) * 25);
-  const exercisePoints = Math.round(Math.min(1, (entry.exerciseMinutes || 0) / state.settings.exerciseGoal) * 20);
-
-  const answeredMeals = mealSlots.filter((slot) => entry.food[slot] !== null);
-  const scoredMeals = answeredMeals.filter((slot) => foodOptions[entry.food[slot]].quality !== null);
-  const foodAverage = scoredMeals.length
-    ? scoredMeals.reduce((sum, slot) => sum + (foodOptions[entry.food[slot]].score ?? foodOptions[entry.food[slot]].quality ?? 0), 0) / scoredMeals.length
+function scoreFood(entry) {
+  const getFoodScore = (value) => foodOptions[value]?.score ?? foodOptions[value]?.quality ?? 0;
+  const coreAnswered = coreMealSlots.filter((slot) => entry.food[slot] !== null);
+  const coreScored = coreAnswered.filter((slot) => foodOptions[entry.food[slot]]?.quality !== null);
+  const coreAverage = coreScored.length
+    ? average(coreScored.map((slot) => getFoodScore(entry.food[slot])))
     : 0;
-  const foodCompletionBonus = coreMealSlots.every((slot) => entry.food[slot] !== null) ? 2 : 0;
-  const foodPoints = Math.min(25, Math.round(foodAverage * 23) + foodCompletionBonus);
+  const coreFoodPoints = Math.round(coreAverage * scoringWeights.food.core);
 
-  const bodyMetricPoints = (entry.weight != null ? 5 : 0) + (entry.bodyFat != null ? 5 : 0);
-  const habitPoints =
-    (entry.habits.protein ? 5 : 0) +
-    (entry.habits.produce ? 5 : 0) +
-    (entry.habits.stoppedBeforeStuffed ? 5 : 0) +
-    (entry.habits.movement ? 5 : 0);
-  const rawTotal = stepPoints + exercisePoints + (dayMode === "full" ? foodPoints : 0) + bodyMetricPoints + habitPoints;
-  const scoreCap = dayMode === "full" ? 100 : 75;
+  const otherValue = entry.food.other;
+  let otherFoodPoints = 0;
+  if (otherValue != null && foodOptions[otherValue]?.quality !== null) {
+    otherFoodPoints = Math.round(getFoodScore(otherValue) * scoringWeights.food.other);
+  }
+
+  const completionBonus = coreAnswered.length >= 4
+    ? scoringWeights.food.completion
+    : coreAnswered.length >= 3
+      ? 1
+      : 0;
+
+  const dinnerDrift = (entry.food.dinner ?? -1) >= 3;
+  const otherDrift = (entry.food.other ?? -1) >= 3;
+  const driftPenalty = dinnerDrift && otherDrift ? 5 : dinnerDrift || otherDrift ? 2 : 0;
+
+  const foodPoints = Math.max(
+    0,
+    Math.min(
+      scoringWeights.food.total,
+      coreFoodPoints + otherFoodPoints + completionBonus - driftPenalty
+    )
+  );
+
+  return {
+    foodPoints,
+    coreFoodPoints,
+    otherFoodPoints,
+    completionBonus,
+    driftPenalty,
+    coreAnsweredCount: coreAnswered.length,
+    coreAverage,
+    foodIsProvisional: coreAnswered.length < 3,
+  };
+}
+
+function scoreHabits(entry) {
+  return (
+    (entry.habits.protein ? scoringWeights.habits.protein : 0) +
+    (entry.habits.produce ? scoringWeights.habits.produce : 0) +
+    (entry.habits.stoppedBeforeStuffed ? scoringWeights.habits.stoppedBeforeStuffed : 0) +
+    (entry.habits.movement ? scoringWeights.habits.movement : 0)
+  );
+}
+
+function getTrailingMetricAverage(priorEntries, key, windowSize = 7) {
+  const values = priorEntries
+    .filter((day) => day[key] != null)
+    .slice(-windowSize)
+    .map((day) => day[key]);
+
+  if (values.length < windowSize) {
+    return null;
+  }
+
+  return average(values);
+}
+
+function scoreBodyMetrics(entry, priorEntries = []) {
+  let points = 0;
+  if (entry.weight != null) {
+    points += scoringWeights.bodyMetrics.weightLogged;
+  }
+  if (entry.bodyFat != null) {
+    points += scoringWeights.bodyMetrics.bodyFatLogged;
+  }
+  if (entry.weight != null && entry.bodyFat != null) {
+    points += scoringWeights.bodyMetrics.bothLoggedBonus;
+  }
+
+  const trailingWeightAverage = getTrailingMetricAverage(priorEntries, "weight");
+  const trailingBodyFatAverage = getTrailingMetricAverage(priorEntries, "bodyFat");
+  const hitWeightTrend = entry.weight != null &&
+    trailingWeightAverage != null &&
+    entry.weight <= trailingWeightAverage - 0.3;
+  const hitBodyFatTrend = entry.bodyFat != null &&
+    trailingBodyFatAverage != null &&
+    entry.bodyFat <= trailingBodyFatAverage - 0.1;
+  const trendBonus = hitWeightTrend || hitBodyFatTrend ? scoringWeights.bodyMetrics.trendBonus : 0;
+
+  return {
+    bodyMetricPoints: Math.min(scoringWeights.bodyMetrics.total, points + trendBonus),
+    trendBonus,
+    trailingWeightAverage,
+    trailingBodyFatAverage,
+  };
+}
+
+function scoreDay(entry, context = {}) {
+  const dayMode = entry.mode || "full";
+  const priorEntries = context.priorEntries || [];
+  const stepPoints = Math.round(Math.min(1, (entry.steps || 0) / state.settings.stepGoal) * scoringWeights.steps);
+  const exercisePoints = Math.round(Math.min(1, (entry.exerciseMinutes || 0) / state.settings.exerciseGoal) * scoringWeights.exercise);
+  const food = scoreFood(entry);
+  const habitPoints = scoreHabits(entry);
+  const bodyMetrics = scoreBodyMetrics(entry, priorEntries);
+  const rawTotal = stepPoints + exercisePoints + (dayMode === "full" ? food.foodPoints : 0) + bodyMetrics.bodyMetricPoints + habitPoints;
+  const scoreCap = dayMode === "full"
+    ? 100
+    : scoringWeights.steps + scoringWeights.exercise + scoringWeights.bodyMetrics.total + Object.values(scoringWeights.habits).reduce((sum, value) => sum + value, 0);
   const totalScore = Math.round((rawTotal / scoreCap) * 100);
-  const bonusXp = getGoalBonus(entry, answeredMeals.length);
+  const bonusXp = getGoalBonus(entry, food.coreAnsweredCount);
 
   return {
     ...entry,
     mode: dayMode,
     stepPoints,
     exercisePoints,
-    foodPoints,
-    bodyMetricPoints,
+    foodPoints: food.foodPoints,
+    bodyMetricPoints: bodyMetrics.bodyMetricPoints,
     habitPoints,
     totalScore,
-    dayType: totalScore >= 70 ? "win" : totalScore >= 55 ? "solid" : "reset",
+    dayType: totalScore >= dayThresholds.win ? "win" : totalScore >= dayThresholds.solid ? "solid" : "reset",
     bonusXp,
-    answeredMeals,
+    answeredMeals: mealSlots.filter((slot) => entry.food[slot] !== null),
+    ...food,
+    ...bodyMetrics,
   };
 }
 
-function getGoalBonus(entry, answeredMealsCount) {
+function getGoalBonus(entry, coreLoggedCount) {
   let bonus = 0;
   if (entry.weight != null && entry.weight <= state.settings.weightGoal) {
     bonus += 30;
@@ -721,7 +856,7 @@ function getGoalBonus(entry, answeredMealsCount) {
   if (entry.bodyFat != null && entry.bodyFat <= state.settings.bodyFatGoal) {
     bonus += 30;
   }
-  if (answeredMealsCount === coreMealSlots.length) {
+  if (coreLoggedCount === coreMealSlots.length) {
     bonus += 10;
   }
   return bonus;
@@ -780,6 +915,107 @@ function calculateBestStreak(days, qualifies) {
   return best;
 }
 
+function getRecentLoggedDays(loggedEntries, count = 7) {
+  return loggedEntries.slice(-count);
+}
+
+function getBestRollingAverage(series) {
+  return series.length ? Math.min(...series.map((item) => item.value)) : null;
+}
+
+function getGapFromBest(currentValue, bestValue) {
+  if (currentValue == null || bestValue == null) {
+    return null;
+  }
+  return currentValue - bestValue;
+}
+
+function getMetricAverage(entries, key) {
+  return average(entries.map((entry) => entry[key]).filter((value) => value != null));
+}
+
+function getNextDayWeightPairs(loggedEntries, metricKey) {
+  const pairs = [];
+  for (let index = 0; index < loggedEntries.length - 1; index += 1) {
+    const current = loggedEntries[index];
+    const next = loggedEntries[index + 1];
+    if (current.weight == null || next.weight == null || current[metricKey] == null) {
+      continue;
+    }
+    pairs.push({
+      feature: current[metricKey],
+      nextDayWeightChange: next.weight - current.weight,
+    });
+  }
+  return pairs;
+}
+
+function pearsonCorrelation(xValues, yValues) {
+  if (xValues.length !== yValues.length || xValues.length < 2) {
+    return null;
+  }
+
+  const xMean = average(xValues);
+  const yMean = average(yValues);
+  let numerator = 0;
+  let xVariance = 0;
+  let yVariance = 0;
+
+  for (let index = 0; index < xValues.length; index += 1) {
+    const xDelta = xValues[index] - xMean;
+    const yDelta = yValues[index] - yMean;
+    numerator += xDelta * yDelta;
+    xVariance += xDelta ** 2;
+    yVariance += yDelta ** 2;
+  }
+
+  if (!xVariance || !yVariance) {
+    return null;
+  }
+
+  return numerator / Math.sqrt(xVariance * yVariance);
+}
+
+function buildCorrelationInsight(loggedEntries) {
+  const recentEntries = loggedEntries.slice(-30);
+  const metrics = [
+    { key: "steps", label: "steps" },
+    { key: "exerciseMinutes", label: "exercise" },
+    { key: "foodPoints", label: "food score" },
+    { key: "totalScore", label: "total score" },
+  ];
+
+  const ranked = metrics.map((metric) => {
+    const pairs = getNextDayWeightPairs(recentEntries, metric.key);
+    const correlation = pearsonCorrelation(
+      pairs.map((pair) => pair.feature),
+      pairs.map((pair) => pair.nextDayWeightChange)
+    );
+    return {
+      ...metric,
+      usablePairs: pairs.length,
+      correlation,
+      helpfulness: correlation == null ? null : -correlation,
+    };
+  }).filter((metric) => metric.correlation != null && metric.usablePairs >= 8);
+
+  if (ranked.length < 2) {
+    return null;
+  }
+
+  const top = [...ranked].sort((a, b) => (b.helpfulness ?? -Infinity) - (a.helpfulness ?? -Infinity)).slice(0, 2);
+  if ((top[0]?.helpfulness ?? -Infinity) <= 0) {
+    return {
+      title: "What seems to help",
+      body: "Your recent data is still mixed. No single lever has separated itself clearly yet, so keep watching exercise, steps, food score, and total score together.",
+    };
+  }
+  return {
+    title: "What seems to help",
+    body: `In your recent data, ${top.map((item) => item.label).join(" and ")} have shown the strongest relationship with better next-day scale movement.`,
+  };
+}
+
 function computeWeeklyMetrics(loggedEntries) {
   const today = new Date(`${getTodayKey()}T12:00:00`);
   const start = new Date(today);
@@ -794,19 +1030,14 @@ function computeWeeklyMetrics(loggedEntries) {
   const weightAverage = average(inWindow.filter((day) => day.weight != null).map((day) => day.weight));
   const bodyFatAverage = average(inWindow.filter((day) => day.bodyFat != null).map((day) => day.bodyFat));
   const loggedDays = inWindow.length;
+  const recentLoggedDays = getRecentLoggedDays(loggedEntries, 7);
 
   const allWeeklyWeightAverages = buildRollingAverageSeries(loggedEntries, "weight");
   const latestWeeklyWeightAverage = allWeeklyWeightAverages.length ? allWeeklyWeightAverages[allWeeklyWeightAverages.length - 1].value : null;
-  const previousWeeklyWeightAverages = allWeeklyWeightAverages.slice(0, -1).map((item) => item.value);
-  const priorLowestWeeklyWeightAverage = previousWeeklyWeightAverages.length
-    ? Math.min(...previousWeeklyWeightAverages)
-    : null;
-  const lowestWeeklyWeightAverage = allWeeklyWeightAverages.length
-    ? Math.min(...allWeeklyWeightAverages.map((item) => item.value))
-    : null;
-  const isNewLowestWeightAverage = latestWeeklyWeightAverage != null && (
-    priorLowestWeeklyWeightAverage == null || latestWeeklyWeightAverage <= priorLowestWeeklyWeightAverage - 0.2
-  );
+  const previousWeeklyWeightAverages = allWeeklyWeightAverages.slice(0, -1);
+  const priorLowestWeeklyWeightAverage = getBestRollingAverage(previousWeeklyWeightAverages);
+  const bestSevenDayWeightAverage = getBestRollingAverage(allWeeklyWeightAverages);
+  const gapFromBestWeightAverage = getGapFromBest(latestWeeklyWeightAverage, bestSevenDayWeightAverage);
 
   const scoreSeries = buildRollingAverageSeries(loggedEntries, "totalScore");
   const latestScoreAverage = scoreSeries.length ? scoreSeries[scoreSeries.length - 1].value : null;
@@ -815,6 +1046,7 @@ function computeWeeklyMetrics(loggedEntries) {
   const weightSeries = buildRollingAverageSeries(loggedEntries, "weight");
   const latestWeightAverage = weightSeries.length ? weightSeries[weightSeries.length - 1].value : null;
   const priorWeightAverage = weightSeries.length > 1 ? weightSeries[weightSeries.length - 2].value : null;
+  const latestWeight = loggedEntries.filter((day) => day.weight != null).slice(-1)[0]?.weight ?? null;
 
   return {
     scoreAverage,
@@ -823,30 +1055,41 @@ function computeWeeklyMetrics(loggedEntries) {
     loggedDays,
     latestWeeklyWeightAverage,
     priorLowestWeeklyWeightAverage,
-    lowestWeeklyWeightAverage,
-    isNewLowestWeightAverage,
+    bestSevenDayWeightAverage,
+    gapFromBestWeightAverage,
     latestScoreAverage,
     priorScoreAverage,
     latestWeightAverage,
     priorWeightAverage,
+    latestWeight,
+    avgStepsLogged: getMetricAverage(recentLoggedDays, "steps"),
+    avgExerciseLogged: getMetricAverage(recentLoggedDays, "exerciseMinutes"),
+    avgFoodPointsLogged: getMetricAverage(recentLoggedDays.filter((day) => day.mode === "full"), "foodPoints"),
+    correlationInsight: buildCorrelationInsight(loggedEntries),
   };
 }
 
-function buildRollingAverageSeries(loggedEntries, key) {
+function buildRollingAverageSeries(loggedEntries, key, windowSize = 7) {
   const series = [];
-  for (let index = 0; index < loggedEntries.length; index += 1) {
-    if (index < 6) {
+  const usable = [];
+
+  for (const day of loggedEntries) {
+    if (day[key] == null) {
       continue;
     }
-    const window = loggedEntries.slice(Math.max(0, index - 6), index + 1).filter((day) => day[key] != null);
-    if (!window.length) {
+
+    usable.push(day);
+    if (usable.length < windowSize) {
       continue;
     }
+
+    const window = usable.slice(-windowSize);
     series.push({
-      date: loggedEntries[index].date,
-      value: average(window.map((day) => day[key])),
+      date: day.date,
+      value: average(window.map((item) => item[key])),
     });
   }
+
   return series;
 }
 
@@ -859,20 +1102,69 @@ function isRewardUnlocked(reward, context) {
     case "logged_days":
       return context.loggedEntries.length >= reward.criteriaValue;
     case "lowest_avg_weight":
-      return state.meta.lowestAvgWeightRewarded != null && reward.claimed === false;
+      return state.meta.lastUnlockedSevenDayAvgWeight != null && (
+        state.meta.lastClaimedSevenDayAvgWeight == null ||
+        state.meta.lastUnlockedSevenDayAvgWeight <= state.meta.lastClaimedSevenDayAvgWeight - 0.2 ||
+        reward.claimed === false
+      );
     default:
       return false;
   }
 }
 
 function syncRewardMilestones(weekly) {
-  if (weekly.isNewLowestWeightAverage && weekly.latestWeeklyWeightAverage != null) {
-    const priorRewarded = state.meta.lowestAvgWeightRewarded;
-    if (priorRewarded == null || weekly.latestWeeklyWeightAverage <= priorRewarded - 0.2) {
-      state.meta.lowestAvgWeightRewarded = weekly.latestWeeklyWeightAverage;
-      saveState();
+  let changed = false;
+  const previousBest = state.meta.bestSevenDayAvgWeight ?? weekly.priorLowestWeeklyWeightAverage;
+  if (weekly.bestSevenDayWeightAverage != null) {
+    const nextBest = state.meta.bestSevenDayAvgWeight == null
+      ? weekly.bestSevenDayWeightAverage
+      : Math.min(state.meta.bestSevenDayAvgWeight, weekly.bestSevenDayWeightAverage);
+    if (nextBest !== state.meta.bestSevenDayAvgWeight) {
+      state.meta.bestSevenDayAvgWeight = nextBest;
+      changed = true;
     }
   }
+
+  if (weekly.latestWeeklyWeightAverage != null) {
+    const isMeaningfullyNewBest = previousBest == null || weekly.latestWeeklyWeightAverage <= previousBest - 0.2;
+    if (isMeaningfullyNewBest) {
+      state.meta.lowestAvgWeightRewarded = weekly.latestWeeklyWeightAverage;
+      state.meta.lastUnlockedSevenDayAvgWeight = weekly.latestWeeklyWeightAverage;
+      state.rewards = state.rewards.map((reward) =>
+        reward.criteriaType === "lowest_avg_weight"
+          ? { ...reward, claimed: false }
+          : reward
+      );
+      if (state.meta.bestSevenDayAvgWeight == null || weekly.latestWeeklyWeightAverage < state.meta.bestSevenDayAvgWeight) {
+        state.meta.bestSevenDayAvgWeight = weekly.latestWeeklyWeightAverage;
+      }
+      saveState();
+      return;
+    }
+  }
+
+  if (changed) {
+    saveState();
+  }
+}
+
+function getTodayBreakdownNote(day) {
+  if (day.foodIsProvisional) {
+    return "Some of today's score is still provisional because the day is not fully logged.";
+  }
+
+  const movementGap = (scoringWeights.steps - day.stepPoints) + (scoringWeights.exercise - day.exercisePoints);
+  const foodGap = day.mode === "full" ? scoringWeights.food.total - day.foodPoints : -Infinity;
+
+  if (foodGap > movementGap && foodGap >= 8) {
+    return "Food quality / control is the biggest drag on today's score.";
+  }
+
+  if (movementGap >= 12) {
+    return "Today's score ceiling is being limited mostly by movement.";
+  }
+
+  return "Today's score is being carried by steady reps more than by measurement alone.";
 }
 
 function renderTodayCard(summary) {
@@ -899,7 +1191,7 @@ function renderTodayCard(summary) {
       <div class="today-main">
         <div class="today-kicker">${escapeHtml(selectedDateLabel)}</div>
         <div class="today-score">${today.totalScore}</div>
-        <div class="today-copy">Win day at 70+. Solid day at 55+. Regular streak survives solid days; elite streak needs wins.</div>
+        <div class="today-copy">Win day at 75+. Solid day at 55-74. Regular streak survives solid days; elite streak needs wins.</div>
         <div class="chapter-banner">
           <div class="chapter-label">${escapeHtml(campaignMeta.title)}</div>
           <div class="chapter-title">${escapeHtml(chapter.title)}</div>
@@ -968,10 +1260,11 @@ function renderTodayCard(summary) {
                     </label>
                   `).join("")}
                 </div>
-              </div>
-            `).join("")}
-          </div>
-        `}
+                </div>
+              `).join("")}
+              ${today.foodIsProvisional ? `<div class="today-meals-reminder">Food score is provisional until more of the day is logged.</div>` : ""}
+            </div>
+          `}
       </div>
       <div class="today-stats">
         ${quickStats.map((item) => `
@@ -982,11 +1275,12 @@ function renderTodayCard(summary) {
         `).join("")}
       </div>
       <div class="today-breakdown ${isMaintenance ? "is-hidden" : ""}">
-        <div class="score-row"><span>Steps</span><span>${today.stepPoints}/25</span></div>
-        <div class="score-row"><span>Exercise</span><span>${today.exercisePoints}/20</span></div>
-        ${today.mode === "full" ? `<div class="score-row"><span>Food</span><span>${today.foodPoints}/25</span></div>` : ""}
-        <div class="score-row"><span>Body metrics</span><span>${today.bodyMetricPoints}/10</span></div>
-        <div class="score-row"><span>Habits</span><span>${today.habitPoints}/20</span></div>
+        <div class="score-row"><span>Steps</span><span>${today.stepPoints}/${scoringWeights.steps}</span></div>
+        <div class="score-row"><span>Exercise</span><span>${today.exercisePoints}/${scoringWeights.exercise}</span></div>
+        ${today.mode === "full" ? `<div class="score-row"><span>Food</span><span>${today.foodPoints}/${scoringWeights.food.total}</span></div>` : ""}
+        <div class="score-row"><span>Body metrics</span><span>${today.bodyMetricPoints}/${scoringWeights.bodyMetrics.total}</span></div>
+        <div class="score-row"><span>Habits</span><span>${today.habitPoints}/${Object.values(scoringWeights.habits).reduce((sum, value) => sum + value, 0)}</span></div>
+        <div class="today-breakdown-note">${escapeHtml(getTodayBreakdownNote(today))}</div>
       </div>
     </div>
   `;
@@ -1046,19 +1340,33 @@ function syncQuickCheckbox(sourceId, targetInput) {
 }
 
 function renderWeeklySummary(summary) {
-  summaryStats.innerHTML = [
+  const statCards = [
     statCard(`Level ${summary.level}`, `${summary.totalXp.toLocaleString()} XP`, `${state.settings.displayName}'s total campaign experience`),
     statCard("Regular Streak", `${summary.regularStreak} days`, `Best: ${summary.bestRegularStreak}`),
     statCard("Elite Streak", `${summary.eliteStreak} days`, `Best: ${summary.bestEliteStreak}`),
     statCard("Next Level", `${summary.nextLevelXp.toLocaleString()} XP`, `${summary.xpToNext.toLocaleString()} XP remaining`),
     statCard("7-day Avg Score", formatMaybe(summary.weekly.scoreAverage), `${summary.weekly.loggedDays} days logged this week`),
-    statCard("7-day Avg Weight", formatMaybe(summary.weekly.weightAverage, 1), `Goal: ${state.settings.weightGoal}`),
+    statCard("Current 7-day Avg Weight", formatMaybe(summary.weekly.latestWeeklyWeightAverage, 1), `Best: ${formatMaybe(summary.weekly.bestSevenDayWeightAverage, 1)} | Gap: ${formatSigned(summary.weekly.gapFromBestWeightAverage, 1)}`),
     statCard("7-day Avg Body Fat", formatMaybe(summary.weekly.bodyFatAverage, 1, "%"), `Goal: ${state.settings.bodyFatGoal}%`),
-  ].join("");
+    statCard("Best 7-day Weight Avg", formatMaybe(summary.weekly.bestSevenDayWeightAverage, 1), "Lowest rolling weekly average achieved"),
+    statCard("7-day Avg Steps", formatMaybe(summary.weekly.avgStepsLogged), `Goal: ${state.settings.stepGoal}`),
+    statCard("7-day Avg Exercise", formatMaybe(summary.weekly.avgExerciseLogged), `Goal: ${state.settings.exerciseGoal} min`),
+    statCard("7-day Avg Food Score", formatMaybe(summary.weekly.avgFoodPointsLogged), `Target: ${scoringWeights.food.total}`),
+  ];
 
-  guardrailList.innerHTML = buildGuardrails(summary)
-    .map((message) => `<div class="guardrail-item">${escapeHtml(message)}</div>`)
-    .join("");
+  summaryStats.innerHTML = statCards.join("");
+
+  const guardrailMarkup = buildGuardrails(summary)
+    .map((message) => `<div class="guardrail-item">${escapeHtml(message)}</div>`);
+  if (summary.weekly.correlationInsight) {
+    guardrailMarkup.push(`
+      <article class="guardrail-item insight-card">
+        <strong>${escapeHtml(summary.weekly.correlationInsight.title)}</strong>
+        <div>${escapeHtml(summary.weekly.correlationInsight.body)}</div>
+      </article>
+    `);
+  }
+  guardrailList.innerHTML = guardrailMarkup.join("");
 }
 
 function renderCharts(summary) {
@@ -1069,7 +1377,7 @@ function renderCharts(summary) {
   chartWrap.innerHTML = `
     ${renderLineChart("Weight", weightDays, "weight", state.settings.weightGoal, buildRollingAverageSeries(weightDays, "weight"))}
     ${renderLineChart("Body Fat %", bodyFatDays, "bodyFat", state.settings.bodyFatGoal, buildRollingAverageSeries(bodyFatDays, "bodyFat"))}
-    ${renderLineChart("Daily Score", scoreDays, "totalScore", 70, buildRollingAverageSeries(scoreDays, "totalScore"))}
+    ${renderLineChart("Daily Score", scoreDays, "totalScore", dayThresholds.win, buildRollingAverageSeries(scoreDays, "totalScore"))}
   `;
 }
 
@@ -1104,7 +1412,7 @@ function renderLineChart(title, data, key, goal, movingAverageSeries = []) {
   const sevenAgo = data.length > 7 ? data[data.length - 8]?.[key] ?? null : null;
   const change = latest != null && sevenAgo != null ? latest - sevenAgo : null;
   const currentAverage = movingAverageSeries.length ? movingAverageSeries[movingAverageSeries.length - 1].value : null;
-  const seriesStats = getSeriesStats(data, key);
+  const seriesStats = buildSeriesSummary(data, key);
   const decimals = key === "totalScore" ? 0 : 1;
 
   return `
@@ -1116,7 +1424,7 @@ function renderLineChart(title, data, key, goal, movingAverageSeries = []) {
         <span>Historic min: ${formatMaybe(seriesStats.min, decimals)}</span>
         <span>Total change: ${formatSigned(seriesStats.totalChange, decimals)}</span>
         <span>${escapeHtml(seriesStats.recentLabel)}: ${formatSigned(seriesStats.recentChange, decimals)}</span>
-        <span>7-day avg: ${formatMaybe(currentAverage, decimals)}</span>
+        <span>7-day avg: ${formatMaybe(seriesStats.currentAverage ?? currentAverage, decimals)}</span>
         <span>vs 7 days ago: ${formatSigned(change, decimals)}</span>
       </div>
       <svg viewBox="0 0 ${width} ${height}" class="trend-chart" role="img" aria-label="${escapeHtml(title)} trend">
@@ -1134,25 +1442,69 @@ function renderLineChart(title, data, key, goal, movingAverageSeries = []) {
   `;
 }
 
+function getRecentWindowLabel(data) {
+  if (!data.length) {
+    return "Recent change";
+  }
+
+  const latestDate = new Date(`${data[data.length - 1].date}T12:00:00`);
+  const cutoff = new Date(latestDate);
+  cutoff.setDate(cutoff.getDate() - 30);
+  const recentWindow = data.filter((item) => new Date(`${item.date}T12:00:00`) >= cutoff);
+  if (recentWindow.length <= 1) {
+    return recentWindow.length ? "Last logged span" : "Recent change";
+  }
+  const earliestRecent = new Date(`${recentWindow[0].date}T12:00:00`);
+  const daySpan = Math.max(1, Math.round((latestDate - earliestRecent) / 86400000));
+  return daySpan >= 27 ? "Last 30 days" : `Last ${daySpan} days`;
+}
+
+function buildSeriesSummary(data, key) {
+  const stats = getSeriesStats(data, key);
+  const currentAverage = buildRollingAverageSeries(data, key).slice(-1)[0]?.value ?? null;
+  return {
+    ...stats,
+    currentAverage,
+    recentLabel: getRecentWindowLabel(data),
+  };
+}
+
 function buildGuardrails(summary) {
   const messages = [];
+  if (
+    summary.weekly.latestWeeklyWeightAverage != null &&
+    summary.weekly.bestSevenDayWeightAverage != null &&
+    summary.weekly.latestWeeklyWeightAverage <= summary.weekly.bestSevenDayWeightAverage + 0.3
+  ) {
+    messages.push("You are still near your best recent trend. Don't overreact to one weigh-in.");
+  }
+  if (
+    summary.today.weight != null &&
+    summary.weekly.latestWeeklyWeightAverage != null &&
+    summary.weekly.priorWeightAverage != null &&
+    summary.today.weight > summary.weekly.latestWeeklyWeightAverage &&
+    summary.weekly.latestWeeklyWeightAverage <= summary.weekly.priorWeightAverage + 0.1
+  ) {
+    messages.push("Daily scale is noisy. Trend is more stable than today's reading.");
+  }
+  if (summary.weekly.avgStepsLogged != null && summary.weekly.avgStepsLogged < state.settings.stepGoal * 0.75) {
+    messages.push("Movement volume has slipped below target.");
+  }
+  if (summary.weekly.avgExerciseLogged != null && summary.weekly.avgExerciseLogged < state.settings.exerciseGoal * 0.6) {
+    messages.push("Exercise consistency is falling off.");
+  }
+  if (summary.weekly.avgFoodPointsLogged != null && summary.weekly.avgFoodPointsLogged < 18) {
+    messages.push("Food quality / control is probably the main leak right now.");
+  }
   if (summary.weekly.loggedDays < 4) {
     messages.push(`You logged only ${summary.weekly.loggedDays} of the last 7 days.`);
   }
-  if (summary.weekly.latestScoreAverage != null && summary.weekly.priorScoreAverage != null && summary.weekly.latestScoreAverage < summary.weekly.priorScoreAverage - 5) {
-    messages.push("Average score is down this week.");
-  }
   if (
-    summary.weekly.latestWeightAverage != null &&
-    summary.weekly.priorWeightAverage != null &&
-    summary.weekly.latestWeightAverage <= summary.weekly.priorWeightAverage + 0.2 &&
-    summary.weekly.latestWeightAverage >= summary.weekly.priorWeightAverage - 0.2
+    summary.weekly.latestScoreAverage != null &&
+    summary.weekly.priorScoreAverage != null &&
+    summary.weekly.latestScoreAverage < summary.weekly.priorScoreAverage - 5
   ) {
-    const latestWeight = summary.timelineLogged.filter((day) => day.weight != null).slice(-1)[0]?.weight ?? null;
-    const previousWeight = summary.timelineLogged.filter((day) => day.weight != null).slice(-8, -7)[0]?.weight ?? null;
-    if (latestWeight != null && previousWeight != null && latestWeight > previousWeight) {
-      messages.push("Weight is up, but the 7-day average is still stable.");
-    }
+    messages.push("Average score is down this week.");
   }
   if (!messages.length) {
     messages.push("Weekly trend is steady. Keep the system simple and consistent.");
@@ -1166,7 +1518,6 @@ function getBossFight(context) {
     return bossFightLibrary.find((item) => item.key === "maintenance_amnesia");
   }
 
-  const last = recent[recent.length - 1];
   const loggingDays = context.weekly.loggedDays;
   const latestWeight = recent.filter((day) => day.weight != null).slice(-1)[0]?.weight ?? null;
   const previousWeight = recent.filter((day) => day.weight != null).slice(-2, -1)[0]?.weight ?? null;
@@ -1248,7 +1599,7 @@ function renderRewards(summary) {
           type="button"
           class="reward-button"
           data-reward-id="${escapeHtml(reward.id)}"
-          ${reward.unlocked ? "" : "disabled"}
+          ${reward.unlocked && !reward.claimed ? "" : "disabled"}
         >${reward.claimed ? "Claimed" : reward.unlocked ? "Claim Reward" : "Locked"}</button>
       </article>
     `)
@@ -1287,8 +1638,8 @@ function renderRecentDays(days) {
         <div class="metric-row">
           <span class="metric-pill">${day.steps || 0} steps</span>
           <span class="metric-pill">${day.exerciseMinutes || 0} min exercise</span>
-          ${day.mode === "full" ? `<span class="metric-pill">Food ${day.foodPoints}/25</span>` : ""}
-          <span class="metric-pill">Habits ${day.habitPoints}/20</span>
+          ${day.mode === "full" ? `<span class="metric-pill">Food ${day.foodPoints}/${scoringWeights.food.total}</span>` : ""}
+          <span class="metric-pill">Habits ${day.habitPoints}/${Object.values(scoringWeights.habits).reduce((sum, value) => sum + value, 0)}</span>
           <span class="metric-pill">${day.weight != null ? `${day.weight} lb` : "No weight"}</span>
           <span class="metric-pill">${day.bodyFat != null ? `${day.bodyFat}% fat` : "No body fat"}</span>
         </div>

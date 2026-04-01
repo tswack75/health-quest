@@ -1,11 +1,11 @@
-const APP_VERSION = "4.0.0";
+const APP_VERSION = "4.1.0";
 const CACHE_NAME = `health-quest-${APP_VERSION}`;
 const APP_FILES = [
   "./",
-  "./index.html?v=4.0.0",
-  "./styles.css?v=4.0.0",
-  "./app.js?v=4.0.0",
-  "./manifest.json?v=4.0.0",
+  "./index.html?v=4.1.0",
+  "./styles.css?v=4.1.0",
+  "./app.js?v=4.1.0",
+  "./manifest.json?v=4.1.0",
 ];
 
 self.addEventListener("install", (event) => {
