@@ -17,7 +17,7 @@ window.EXERCISE_HELP_LIBRARY = {
       "Rounding your back to chase extra depth."
     ],
     demoUrl: "assets/exercises/goblet-squat.svg",
-    demoAlt: "Placeholder demo for goblet squat. Replace with looping GIF or video."
+    demoAlt: "Animated demo for goblet squat."
   },
   "dumbbell-bench-press": {
     name: "Dumbbell Bench Press",
@@ -37,7 +37,7 @@ window.EXERCISE_HELP_LIBRARY = {
       "Pressing unevenly and twisting the torso."
     ],
     demoUrl: "assets/exercises/dumbbell-bench-press.svg",
-    demoAlt: "Placeholder demo for dumbbell bench press. Replace with looping GIF or video."
+    demoAlt: "Animated demo for dumbbell bench press."
   },
   "incline-push-ups": {
     name: "Incline Push-Ups",
@@ -57,7 +57,7 @@ window.EXERCISE_HELP_LIBRARY = {
       "Bouncing through reps without control."
     ],
     demoUrl: "assets/exercises/incline-push-up.svg",
-    demoAlt: "Placeholder demo for incline push-up. Replace with looping GIF or video."
+    demoAlt: "Animated demo for incline push-up."
   },
   "one-arm-dumbbell-row": {
     name: "One-Arm Dumbbell Row",
@@ -77,7 +77,7 @@ window.EXERCISE_HELP_LIBRARY = {
       "Dropping the dumbbell on the way down."
     ],
     demoUrl: "assets/exercises/one-arm-dumbbell-row.svg",
-    demoAlt: "Placeholder demo for one-arm dumbbell row. Replace with looping GIF or video."
+    demoAlt: "Animated demo for one-arm dumbbell row."
   },
   "romanian-deadlift": {
     name: "Romanian Deadlift",
@@ -97,7 +97,7 @@ window.EXERCISE_HELP_LIBRARY = {
       "Snapping the hips through too aggressively at the top."
     ],
     demoUrl: "assets/exercises/romanian-deadlift.svg",
-    demoAlt: "Placeholder demo for Romanian deadlift. Replace with looping GIF or video."
+    demoAlt: "Animated demo for Romanian deadlift."
   },
   "plank": {
     name: "Plank",
@@ -117,7 +117,7 @@ window.EXERCISE_HELP_LIBRARY = {
       "Staying in a messy plank just to hit the clock."
     ],
     demoUrl: "assets/exercises/plank.svg",
-    demoAlt: "Placeholder demo for plank. Replace with looping GIF or video."
+    demoAlt: "Animated demo for plank."
   },
   "dead-bug": {
     name: "Dead Bug",
@@ -137,6 +137,6 @@ window.EXERCISE_HELP_LIBRARY = {
       "Turning it into a flailing arm-and-leg motion."
     ],
     demoUrl: "assets/exercises/dead-bug.svg",
-    demoAlt: "Placeholder demo for dead bug. Replace with looping GIF or video."
+    demoAlt: "Animated demo for dead bug."
   }
 };

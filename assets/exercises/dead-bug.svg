@@ -1,7 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" role="img" aria-label="Placeholder demo for dead bug">
-  <rect width="480" height="320" fill="#f6efe4"/>
-  <rect x="24" y="24" width="432" height="272" rx="28" fill="#fffaf1" stroke="#0d3b66" stroke-opacity=".15"/>
-  <text x="240" y="120" text-anchor="middle" font-family="Avenir Next, Segoe UI, sans-serif" font-size="28" fill="#0d3b66" font-weight="700">Dead Bug</text>
-  <text x="240" y="164" text-anchor="middle" font-family="Avenir Next, Segoe UI, sans-serif" font-size="18" fill="#5c677d">Replace with looping GIF / video demo</text>
-  <text x="240" y="204" text-anchor="middle" font-family="Avenir Next, Segoe UI, sans-serif" font-size="16" fill="#5c677d">assets/exercises/dead-bug.gif</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" role="img" aria-label="Animated demo for dead bug">
+  <defs>
+    <linearGradient id="bugBg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#f7f1e8"/>
+      <stop offset="100%" stop-color="#ece1d1"/>
+    </linearGradient>
+    <style>
+      .label { font: 600 18px 'Avenir Next', 'Segoe UI', sans-serif; fill: #14324a; }
+      .hint { font: 500 13px 'Avenir Next', 'Segoe UI', sans-serif; fill: #5d7285; }
+    </style>
+  </defs>
+  <rect width="480" height="320" rx="28" fill="url(#bugBg)"/>
+  <rect x="28" y="24" width="424" height="272" rx="24" fill="#fffaf1" stroke="#0d3b66" stroke-opacity=".12"/>
+  <text x="42" y="54" class="label">Dead Bug</text>
+  <text x="42" y="74" class="hint">Move slowly. Keep the trunk quiet while limbs extend.</text>
+  <rect x="94" y="236" width="292" height="10" rx="5" fill="#c7ccd4"/>
+  <g>
+    <circle cx="240" cy="140" r="20" fill="#1f2f3d"/>
+    <line x1="240" y1="158" x2="240" y2="204" stroke="#d48657" stroke-width="16" stroke-linecap="round"/>
+    <line x1="240" y1="176" x2="186" y2="134" stroke="#d48657" stroke-width="12" stroke-linecap="round">
+      <animate attributeName="x2" values="186;160;186" dur="2.2s" repeatCount="indefinite"/>
+      <animate attributeName="y2" values="134;112;134" dur="2.2s" repeatCount="indefinite"/>
+    </line>
+    <line x1="240" y1="176" x2="294" y2="134" stroke="#d48657" stroke-width="12" stroke-linecap="round">
+      <animate attributeName="x2" values="294;320;294" dur="2.2s" repeatCount="indefinite"/>
+      <animate attributeName="y2" values="134;112;134" dur="2.2s" repeatCount="indefinite"/>
+    </line>
+    <line x1="240" y1="204" x2="194" y2="166" stroke="#d48657" stroke-width="14" stroke-linecap="round">
+      <animate attributeName="x2" values="194;164;194" dur="2.2s" repeatCount="indefinite"/>
+      <animate attributeName="y2" values="166;234;166" dur="2.2s" repeatCount="indefinite"/>
+    </line>
+    <line x1="240" y1="204" x2="286" y2="166" stroke="#d48657" stroke-width="14" stroke-linecap="round">
+      <animate attributeName="x2" values="286;316;286" dur="2.2s" repeatCount="indefinite"/>
+      <animate attributeName="y2" values="166;234;166" dur="2.2s" repeatCount="indefinite"/>
+    </line>
+  </g>
 </svg>

@@ -19,6 +19,7 @@ Health Quest is a local-first iPhone-friendly web app for manual daily health lo
 - Saves everything locally in browser storage.
 - Includes a visible build version and export timestamp.
 - Uses a behavior-weighted scoring model that emphasizes steps, exercise, food quality/control, lighter body-metric bonuses, and now an integrated Strength Quest module.
+- Includes a separate `Strength` tab with workout logging and tap-to-open exercise help sheets.
 
 ## Important Apple Limitation
 
@@ -42,15 +43,17 @@ If you host this folder somewhere accessible from Safari:
 
 - Direct Apple HealthKit access requires a native iPhone app. This version is manual-entry by design.
 - Service worker install/offline support usually requires HTTP or HTTPS, not `file://`.
-- The installed PWA is versioned for GitHub Pages updates. New builds bump the visible app version, the manifest URL, the CSS/JS asset URLs, and the service-worker cache name so stale app-shell caches are cleared more reliably. This build is `v4.3.0`.
+- The installed PWA is versioned for GitHub Pages updates. New builds bump the visible app version, the manifest URL, the CSS/JS asset URLs, and the service-worker cache name so stale app-shell caches are cleared more reliably. This build is `v4.4.1`.
 - The service worker uses a network-first strategy for app-shell files, then falls back to cache if offline.
 - If a new service worker is waiting, the app can show an in-app refresh/update prompt.
 - If the installed PWA still looks old after deploy, open the site in Safari once, then refresh or reopen the installed app.
+- Exercise demos live in `assets/exercises/` as local looped media so they stay fast and easy to replace later.
 
 ## Files
 
 - [index.html](/C:/Open%20AI%20Codex/health-quest/index.html): app shell
 - [styles.css](/C:/Open%20AI%20Codex/health-quest/styles.css): UI styling
 - [app.js](/C:/Open%20AI%20Codex/health-quest/app.js): state, scoring, rewards, graphs, and rendering
+- [exercise-help.js](/C:/Open%20AI%20Codex/health-quest/exercise-help.js): strength exercise descriptions, tips, mistakes, and demo paths
 - [manifest.json](/C:/Open%20AI%20Codex/health-quest/manifest.json): PWA metadata
 - [sw.js](/C:/Open%20AI%20Codex/health-quest/sw.js): offline caching

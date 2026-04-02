@@ -1,7 +1,45 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" role="img" aria-label="Placeholder demo for goblet squat">
-  <rect width="480" height="320" fill="#f6efe4"/>
-  <rect x="24" y="24" width="432" height="272" rx="28" fill="#fffaf1" stroke="#0d3b66" stroke-opacity=".15"/>
-  <text x="240" y="120" text-anchor="middle" font-family="Avenir Next, Segoe UI, sans-serif" font-size="28" fill="#0d3b66" font-weight="700">Goblet Squat</text>
-  <text x="240" y="164" text-anchor="middle" font-family="Avenir Next, Segoe UI, sans-serif" font-size="18" fill="#5c677d">Replace with looping GIF / video demo</text>
-  <text x="240" y="204" text-anchor="middle" font-family="Avenir Next, Segoe UI, sans-serif" font-size="16" fill="#5c677d">assets/exercises/goblet-squat.gif</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" role="img" aria-label="Animated demo for goblet squat">
+  <defs>
+    <linearGradient id="squatBg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#f6efe4"/>
+      <stop offset="100%" stop-color="#ecdcc3"/>
+    </linearGradient>
+    <style>
+      .label { font: 600 18px 'Avenir Next', 'Segoe UI', sans-serif; fill: #14324a; }
+      .hint { font: 500 13px 'Avenir Next', 'Segoe UI', sans-serif; fill: #5d7285; }
+    </style>
+  </defs>
+  <rect width="480" height="320" rx="28" fill="url(#squatBg)"/>
+  <rect x="28" y="24" width="424" height="272" rx="24" fill="#fffaf1" stroke="#0d3b66" stroke-opacity=".12"/>
+  <text x="42" y="54" class="label">Goblet Squat</text>
+  <text x="42" y="74" class="hint">Chest tall. Sit between the hips. Stand with control.</text>
+  <g transform="translate(0 -2)">
+    <circle cx="240" cy="96" r="22" fill="#1f2f3d">
+      <animate attributeName="cy" values="96;108;96" dur="2.2s" repeatCount="indefinite"/>
+    </circle>
+    <rect x="215" y="120" width="50" height="72" rx="22" fill="#d48657">
+      <animate attributeName="y" values="120;132;120" dur="2.2s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="222" y="126" width="36" height="28" rx="10" fill="#3e4d5c">
+      <animate attributeName="y" values="126;138;126" dur="2.2s" repeatCount="indefinite"/>
+    </rect>
+    <line x1="222" y1="166" x2="186" y2="222" stroke="#d48657" stroke-width="14" stroke-linecap="round">
+      <animate attributeName="y1" values="166;178;166" dur="2.2s" repeatCount="indefinite"/>
+      <animate attributeName="y2" values="222;246;222" dur="2.2s" repeatCount="indefinite"/>
+      <animate attributeName="x2" values="186;176;186" dur="2.2s" repeatCount="indefinite"/>
+    </line>
+    <line x1="258" y1="166" x2="294" y2="222" stroke="#d48657" stroke-width="14" stroke-linecap="round">
+      <animate attributeName="y1" values="166;178;166" dur="2.2s" repeatCount="indefinite"/>
+      <animate attributeName="y2" values="222;246;222" dur="2.2s" repeatCount="indefinite"/>
+      <animate attributeName="x2" values="294;304;294" dur="2.2s" repeatCount="indefinite"/>
+    </line>
+    <line x1="224" y1="138" x2="196" y2="160" stroke="#d48657" stroke-width="12" stroke-linecap="round">
+      <animate attributeName="y1" values="138;150;138" dur="2.2s" repeatCount="indefinite"/>
+      <animate attributeName="y2" values="160;172;160" dur="2.2s" repeatCount="indefinite"/>
+    </line>
+    <line x1="256" y1="138" x2="284" y2="160" stroke="#d48657" stroke-width="12" stroke-linecap="round">
+      <animate attributeName="y1" values="138;150;138" dur="2.2s" repeatCount="indefinite"/>
+      <animate attributeName="y2" values="160;172;160" dur="2.2s" repeatCount="indefinite"/>
+    </line>
+  </g>
 </svg>

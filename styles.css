@@ -202,11 +202,18 @@ button,
   border: 1px solid var(--line);
 }
 
-.help-media img {
+.help-media img,
+.help-media object,
+.help-media video {
   display: block;
   width: 100%;
   max-width: 100%;
   height: auto;
+}
+
+.help-media object {
+  aspect-ratio: 3 / 2;
+  background: rgba(13, 59, 102, 0.04);
 }
 
 .help-description,
@@ -550,6 +557,25 @@ button,
   margin: 0 0 12px;
 }
 
+.strength-inline-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.strength-shortcut-button {
+  flex: 0 0 auto;
+}
+
+.strength-inline-detail {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin-top: -2px;
+}
+
 .today-action-pill,
 .signal-card {
   padding: 8px 10px;
@@ -888,7 +914,8 @@ button,
 .scorecard-stat span,
 .scorecard-copy p,
 .progress-copy p,
-.strength-inline-meta span {
+.strength-inline-meta span,
+.strength-inline-detail {
   color: var(--muted);
   line-height: 1.35;
 }
@@ -1093,6 +1120,14 @@ body.maintenance-mode .today-breakdown {
   .strength-hero,
   .strength-set-row {
     grid-template-columns: 1fr;
+  }
+
+  .strength-inline-top {
+    flex-direction: column;
+  }
+
+  .strength-shortcut-button {
+    width: 100%;
   }
 
   .help-sheet-panel {

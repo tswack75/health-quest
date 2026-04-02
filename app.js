@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.3.0";
+const APP_VERSION = "v4.4.1";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const mealSlots = ["morning", "lunch", "afternoon", "dinner", "other"];
@@ -1615,6 +1615,42 @@ function getStrengthStoryHook(summary) {
   return "You held the line this week.";
 }
 
+function getStrengthPrimaryAction(summary) {
+  const status = summary.strength.status;
+  if (status === "in_progress") {
+    return { label: "Resume Workout", detail: "Pick up where you left off.", mode: "resume" };
+  }
+  if (status === "due") {
+    return { label: "Start Workout", detail: "Today's session is ready.", mode: "start" };
+  }
+  if (status === "complete") {
+    return { label: "Review Workout", detail: "See today's logged session.", mode: "review" };
+  }
+  return {
+    label: "Open Strength",
+    detail: summary.strength.nextDay ? `Next lifting day: ${formatDisplayDate(summary.strength.nextDay)}` : "Check the plan and next session.",
+    mode: "open",
+  };
+}
+
+function handleStrengthPrimaryAction(summary, options = {}) {
+  const { switchTab = true } = options;
+  const dateKey = getSelectedDateKey();
+  const action = getStrengthPrimaryAction(summary);
+
+  if ((action.mode === "start" || action.mode === "resume") &&
+      (!state.meta.currentStrengthSession || state.meta.currentStrengthSession.date !== dateKey)) {
+    state.meta.currentStrengthSession = createStrengthSession(dateKey);
+    saveState();
+  }
+
+  if (switchTab) {
+    setActiveTab("strength");
+  } else {
+    render();
+  }
+}
+
 function openExerciseHelp(helpSlug, alternateHelpSlug = null) {
   const primary = getExerciseHelpEntry(helpSlug);
   const alternate = alternateHelpSlug ? getExerciseHelpEntry(alternateHelpSlug) : null;
@@ -1626,7 +1662,7 @@ function openExerciseHelp(helpSlug, alternateHelpSlug = null) {
   exerciseHelpTitle.textContent = primary.name;
   exerciseHelpContent.innerHTML = `
     <div class="help-media">
-      <img src="${escapeHtml(primary.demoUrl)}" alt="${escapeHtml(primary.demoAlt)}" loading="lazy">
+      ${renderExerciseDemoMedia(primary)}
     </div>
     <p class="help-description">${escapeHtml(primary.description)}</p>
     <div class="help-section">
@@ -1662,6 +1698,25 @@ function openExerciseHelp(helpSlug, alternateHelpSlug = null) {
 function closeExerciseHelp() {
   exerciseHelpSheet.classList.add("is-hidden");
   exerciseHelpSheet.setAttribute("aria-hidden", "true");
+}
+
+function renderExerciseDemoMedia(entry) {
+  const url = String(entry?.demoUrl || "");
+  const alt = escapeHtml(entry?.demoAlt || entry?.name || "Exercise demo");
+
+  if (url.endsWith(".svg")) {
+    return `<object data="${escapeHtml(url)}" type="image/svg+xml" aria-label="${alt}"></object>`;
+  }
+
+  if (url.endsWith(".mp4") || url.endsWith(".webm")) {
+    return `
+      <video autoplay muted loop playsinline preload="none" aria-label="${alt}">
+        <source src="${escapeHtml(url)}">
+      </video>
+    `;
+  }
+
+  return `<img src="${escapeHtml(url)}" alt="${alt}" loading="lazy">`;
 }
 
 function getTodayBreakdownNote(day) {
@@ -1703,6 +1758,7 @@ function renderTodayCard(summary) {
       <input id="today-notes" type="text" maxlength="120" value="${escapeHtml(today.notes || "")}" placeholder="client lunch, poor sleep, field day">
     </label>
   `;
+  const strengthAction = getStrengthPrimaryAction(summary);
 
   todayCard.innerHTML = `
     <div class="today-grid">
@@ -1736,12 +1792,18 @@ function renderTodayCard(summary) {
           <div class="boss-copy">${escapeHtml(summary.bossFight.body)}</div>
         </div>
         <div class="strength-inline-card">
-          <div class="boss-title">Strength Quest</div>
-          <div class="boss-copy">${escapeHtml(getStrengthStoryHook(summary))}</div>
+          <div class="strength-inline-top">
+            <div>
+              <div class="boss-title">Strength Quest</div>
+              <div class="boss-copy">${escapeHtml(getStrengthStoryHook(summary))}</div>
+            </div>
+            <button id="today-strength-shortcut" type="button" class="strength-shortcut-button">${escapeHtml(strengthAction.label)}</button>
+          </div>
           <div class="strength-inline-meta">
             <span>${summary.strength.status === "due" ? "Workout due today" : summary.strength.status === "complete" ? "Workout complete" : summary.strength.status === "in_progress" ? "Workout in progress" : "Recovery / non-lifting day"}</span>
             <span>${summary.strength.nextDay ? `Next: ${formatDisplayDate(summary.strength.nextDay)}` : "Next session pending"}</span>
           </div>
+          <div class="strength-inline-detail">${escapeHtml(strengthAction.detail)}</div>
         </div>
         <div class="quick-fields">
           ${isMaintenance ? "" : `
@@ -1830,6 +1892,10 @@ function renderTodayCard(summary) {
   const repeatMealsButton = document.getElementById("repeat-last-meals");
   if (repeatMealsButton) {
     repeatMealsButton.addEventListener("click", repeatLastMeals);
+  }
+  const todayStrengthShortcut = document.getElementById("today-strength-shortcut");
+  if (todayStrengthShortcut) {
+    todayStrengthShortcut.addEventListener("click", () => handleStrengthPrimaryAction(summary));
   }
 }
 
@@ -1943,6 +2009,7 @@ function renderStrengthCard(summary) {
   const isDue = summary.strength.status === "due";
   const isInProgress = summary.strength.status === "in_progress";
   const isComplete = summary.strength.status === "complete";
+  const strengthAction = getStrengthPrimaryAction(summary);
   const exercises = (session?.exercises || workout.exercises.map((exercise) => ({
     ...exercise,
     targetSets: exercise.sets,
@@ -1959,10 +2026,10 @@ function renderStrengthCard(summary) {
       </div>
       <div class="strength-actions">
         ${isComplete
-          ? `<button type="button" class="secondary-button" disabled>Workout Complete</button>`
+          ? `<button id="start-strength-session" type="button" class="secondary-button">${escapeHtml(strengthAction.label)}</button>`
           : isDue || isInProgress
-            ? `<button id="start-strength-session" type="button">${isInProgress ? "Resume Workout" : "Start Workout"}</button>`
-            : `<button type="button" class="secondary-button" disabled>Recovery Day</button>`}
+            ? `<button id="start-strength-session" type="button">${escapeHtml(strengthAction.label)}</button>`
+            : `<button id="start-strength-session" type="button" class="secondary-button">${escapeHtml(strengthAction.label)}</button>`}
       </div>
     </div>
     <div class="strength-list">
@@ -2027,13 +2094,7 @@ function renderStrengthCard(summary) {
 
   const startButton = document.getElementById("start-strength-session");
   if (startButton) {
-    startButton.addEventListener("click", () => {
-      if (!state.meta.currentStrengthSession || state.meta.currentStrengthSession.date !== dateKey) {
-        state.meta.currentStrengthSession = createStrengthSession(dateKey);
-        saveState();
-      }
-      render();
-    });
+    startButton.addEventListener("click", () => handleStrengthPrimaryAction(summary, { switchTab: false }));
   }
 
   for (const input of strengthCard.querySelectorAll("[data-strength-field]")) {

@@ -1,7 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" role="img" aria-label="Placeholder demo for one-arm dumbbell row">
-  <rect width="480" height="320" fill="#f6efe4"/>
-  <rect x="24" y="24" width="432" height="272" rx="28" fill="#fffaf1" stroke="#0d3b66" stroke-opacity=".15"/>
-  <text x="240" y="120" text-anchor="middle" font-family="Avenir Next, Segoe UI, sans-serif" font-size="28" fill="#0d3b66" font-weight="700">One-Arm Dumbbell Row</text>
-  <text x="240" y="164" text-anchor="middle" font-family="Avenir Next, Segoe UI, sans-serif" font-size="18" fill="#5c677d">Replace with looping GIF / video demo</text>
-  <text x="240" y="204" text-anchor="middle" font-family="Avenir Next, Segoe UI, sans-serif" font-size="16" fill="#5c677d">assets/exercises/one-arm-dumbbell-row.gif</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" role="img" aria-label="Animated demo for one-arm dumbbell row">
+  <defs>
+    <linearGradient id="rowBg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#f5efe5"/>
+      <stop offset="100%" stop-color="#efe4d0"/>
+    </linearGradient>
+    <style>
+      .label { font: 600 18px 'Avenir Next', 'Segoe UI', sans-serif; fill: #14324a; }
+      .hint { font: 500 13px 'Avenir Next', 'Segoe UI', sans-serif; fill: #5d7285; }
+    </style>
+  </defs>
+  <rect width="480" height="320" rx="28" fill="url(#rowBg)"/>
+  <rect x="28" y="24" width="424" height="272" rx="24" fill="#fffaf1" stroke="#0d3b66" stroke-opacity=".12"/>
+  <text x="42" y="54" class="label">One-Arm Dumbbell Row</text>
+  <text x="42" y="74" class="hint">Pull elbow toward the hip. Avoid torso twist.</text>
+  <rect x="268" y="176" width="118" height="20" rx="10" fill="#8f6f52"/>
+  <g>
+    <circle cx="176" cy="126" r="18" fill="#1f2f3d"/>
+    <line x1="186" y1="146" x2="272" y2="178" stroke="#d48657" stroke-width="16" stroke-linecap="round"/>
+    <line x1="270" y1="178" x2="334" y2="178" stroke="#d48657" stroke-width="12" stroke-linecap="round"/>
+    <line x1="220" y1="172" x2="168" y2="236" stroke="#d48657" stroke-width="12" stroke-linecap="round"/>
+    <line x1="262" y1="182" x2="222" y2="240" stroke="#d48657" stroke-width="12" stroke-linecap="round"/>
+    <line x1="222" y1="164" x2="194" y2="208" stroke="#d48657" stroke-width="12" stroke-linecap="round"/>
+    <line x1="222" y1="164" x2="244" y2="126" stroke="#d48657" stroke-width="12" stroke-linecap="round">
+      <animate attributeName="x2" values="262;244;262" dur="2s" repeatCount="indefinite"/>
+      <animate attributeName="y2" values="102;126;102" dur="2s" repeatCount="indefinite"/>
+    </line>
+    <rect x="252" y="118" width="46" height="12" rx="6" fill="#d48657">
+      <animate attributeName="x" values="270;252;270" dur="2s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="94;118;94" dur="2s" repeatCount="indefinite"/>
+    </rect>
+    <circle cx="256" cy="124" r="9" fill="#3e4d5c">
+      <animate attributeName="cx" values="274;256;274" dur="2s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="100;124;100" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="294" cy="124" r="9" fill="#3e4d5c">
+      <animate attributeName="cx" values="312;294;312" dur="2s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="100;124;100" dur="2s" repeatCount="indefinite"/>
+    </circle>
+  </g>
 </svg>

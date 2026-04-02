@@ -1,12 +1,12 @@
-const APP_VERSION = "4.3.0";
+const APP_VERSION = "4.4.1";
 const CACHE_NAME = `health-quest-${APP_VERSION}`;
 const APP_FILES = [
   "./",
-  "./index.html?v=4.3.0",
-  "./styles.css?v=4.3.0",
-  "./exercise-help.js?v=4.3.0",
-  "./app.js?v=4.3.0",
-  "./manifest.json?v=4.3.0",
+  "./index.html?v=4.4.1",
+  "./styles.css?v=4.4.1",
+  "./exercise-help.js?v=4.4.1",
+  "./app.js?v=4.4.1",
+  "./manifest.json?v=4.4.1",
   "./assets/exercises/goblet-squat.svg",
   "./assets/exercises/dumbbell-bench-press.svg",
   "./assets/exercises/incline-push-up.svg",
