@@ -157,6 +157,79 @@ button,
   color: #fffaf1;
 }
 
+.help-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+
+.help-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(30, 41, 59, 0.42);
+}
+
+.help-sheet-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: min(82vh, 760px);
+  overflow-y: auto;
+  background: var(--panel-strong);
+  border-radius: 24px 24px 0 0;
+  padding: 18px 16px calc(24px + env(safe-area-inset-bottom));
+  box-shadow: 0 -18px 40px rgba(28, 46, 74, 0.18);
+}
+
+.help-sheet-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.help-sheet-content {
+  display: grid;
+  gap: 14px;
+}
+
+.help-media {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: rgba(13, 59, 102, 0.06);
+  border: 1px solid var(--line);
+}
+
+.help-media img {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+}
+
+.help-description,
+.help-section li {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.help-section {
+  display: grid;
+  gap: 8px;
+}
+
+.help-section-title {
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.help-section ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
 .main-grid > *,
 .today-grid > *,
 .today-stats,
@@ -766,21 +839,12 @@ button,
   margin-top: 4px;
 }
 
-.exercise-tips {
-  margin-top: 10px;
-}
-
-.exercise-tips summary {
-  cursor: pointer;
-  color: var(--brand);
-  font-size: 0.86rem;
-  font-weight: 700;
-}
-
-.exercise-tips ul {
-  margin: 8px 0 0 18px;
-  padding: 0;
-  color: var(--muted);
+.strength-help-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
 }
 
 .strength-sets {
@@ -1029,6 +1093,11 @@ body.maintenance-mode .today-breakdown {
   .strength-hero,
   .strength-set-row {
     grid-template-columns: 1fr;
+  }
+
+  .help-sheet-panel {
+    padding-left: 14px;
+    padding-right: 14px;
   }
 
   .today-meals {
