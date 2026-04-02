@@ -140,6 +140,23 @@ button,
   gap: 20px;
 }
 
+.tab-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 18px;
+}
+
+.tab-button {
+  background: rgba(13, 59, 102, 0.08);
+  color: var(--brand);
+}
+
+.tab-button.active {
+  background: var(--brand);
+  color: #fffaf1;
+}
+
 .main-grid > *,
 .today-grid > *,
 .today-stats,
@@ -749,6 +766,23 @@ button,
   margin-top: 4px;
 }
 
+.exercise-tips {
+  margin-top: 10px;
+}
+
+.exercise-tips summary {
+  cursor: pointer;
+  color: var(--brand);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.exercise-tips ul {
+  margin: 8px 0 0 18px;
+  padding: 0;
+  color: var(--muted);
+}
+
 .strength-sets {
   display: grid;
   gap: 8px;
@@ -1021,6 +1055,15 @@ body.maintenance-mode .today-breakdown {
 
   .panel {
     padding: 16px;
+  }
+
+  .tab-bar {
+    position: sticky;
+    top: max(8px, env(safe-area-inset-top));
+    z-index: 10;
+    padding: 8px 0;
+    background: linear-gradient(180deg, rgba(246, 239, 228, 0.96), rgba(246, 239, 228, 0.82));
+    backdrop-filter: blur(8px);
   }
 
   .app-footer {

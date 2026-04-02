@@ -29,8 +29,16 @@
       <button id="refresh-app" type="button">Refresh App</button>
     </div>
 
+    <nav class="tab-bar" aria-label="Primary navigation">
+      <button type="button" class="tab-button active" data-tab="today">Today</button>
+      <button type="button" class="tab-button" data-tab="strength">Strength</button>
+      <button type="button" class="tab-button" data-tab="trends">Trends</button>
+      <button type="button" class="tab-button" data-tab="progress">Progress</button>
+      <button type="button" class="tab-button" data-tab="settings">Settings</button>
+    </nav>
+
     <main class="main-grid">
-      <section class="panel today-panel">
+      <section class="panel today-panel" data-view="today">
         <div class="panel-header">
           <h2>Today</h2>
           <div class="today-actions">
@@ -40,7 +48,7 @@
         <div id="today-card" class="today-card"></div>
       </section>
 
-      <section class="panel settings-panel">
+      <section class="panel settings-panel" data-view="settings">
         <div class="panel-header">
           <h2>Settings & Data</h2>
         </div>
@@ -92,7 +100,7 @@
         <p id="status-message" class="status-message">Local-first storage is on. Export occasionally for safety.</p>
       </section>
 
-      <section class="panel log-panel">
+      <section class="panel log-panel" data-view="today">
         <div class="panel-header">
           <h2>Daily Log</h2>
         </div>
@@ -145,14 +153,14 @@
         </div>
       </section>
 
-      <section class="panel strength-panel">
+      <section class="panel strength-panel" data-view="strength">
         <div class="panel-header">
           <h2>Strength Quest</h2>
         </div>
         <div id="strength-card" class="strength-card"></div>
       </section>
 
-      <section class="panel summary-panel">
+      <section class="panel summary-panel" data-view="trends">
         <div class="panel-header">
           <h2>Signals & Trends</h2>
         </div>
@@ -162,21 +170,21 @@
         <div id="chart-wrap" class="chart-wrap"></div>
       </section>
 
-      <section class="panel scorecard-panel">
+      <section class="panel scorecard-panel" data-view="trends">
         <div class="panel-header">
           <h2>Weekly Scorecard</h2>
         </div>
         <div id="scorecard-card" class="scorecard-card"></div>
       </section>
 
-      <section class="panel progress-panel">
+      <section class="panel progress-panel" data-view="progress">
         <div class="panel-header">
           <h2>Progress</h2>
         </div>
         <div id="progress-card" class="progress-card"></div>
       </section>
 
-      <section class="panel rewards-panel">
+      <section class="panel rewards-panel" data-view="progress">
         <div class="panel-header">
           <h2>Rewards</h2>
         </div>
@@ -203,14 +211,14 @@
         <div id="reward-list" class="reward-list"></div>
       </section>
 
-      <section class="panel story-panel">
+      <section class="panel story-panel" data-view="progress">
         <div class="panel-header">
           <h2>Campaign Journal</h2>
         </div>
         <div id="story-card" class="story-card"></div>
       </section>
 
-      <section class="panel activity-panel">
+      <section class="panel activity-panel" data-view="progress">
         <div class="panel-header">
           <h2>Recent Days</h2>
         </div>

@@ -105,11 +105,67 @@ const defaultStrengthPlan = {
       id: "full-body-a",
       name: "Strength Quest A",
       exercises: [
-        { name: "Goblet Squat", sets: 3, reps: 8, repRange: [8, 10] },
-        { name: "Dumbbell Bench Press / Incline Push-Ups", sets: 3, reps: 8, repRange: [8, 10] },
-        { name: "One-Arm Dumbbell Row", sets: 3, reps: 8, repRange: [8, 10] },
-        { name: "Romanian Deadlift", sets: 3, reps: 8, repRange: [8, 10] },
-        { name: "Plank / Dead Bug", sets: 3, reps: "30 sec", repRange: [30, 45], optional: true },
+        {
+          name: "Goblet Squat",
+          sets: 3,
+          reps: 8,
+          repRange: [8, 10],
+          description: "Squat pattern for legs and trunk with a dumbbell held at chest height.",
+          tips: [
+            "Brace before each rep and keep your ribs stacked over your hips.",
+            "Sit between your feet, not onto your toes.",
+            "Keep the dumbbell close and drive up through mid-foot."
+          ],
+        },
+        {
+          name: "Dumbbell Bench Press / Incline Push-Ups",
+          sets: 3,
+          reps: 8,
+          repRange: [8, 10],
+          description: "Horizontal press for chest, shoulders, and triceps using dumbbells or bodyweight.",
+          tips: [
+            "Keep shoulders packed down instead of shrugging.",
+            "Lower under control and press without bouncing.",
+            "For incline push-ups, keep a straight line from head to heel."
+          ],
+        },
+        {
+          name: "One-Arm Dumbbell Row",
+          sets: 3,
+          reps: 8,
+          repRange: [8, 10],
+          description: "Single-arm pulling work for upper back and lats.",
+          tips: [
+            "Brace your torso so the row comes from the arm, not body swing.",
+            "Pull elbow toward hip, not straight up to shoulder.",
+            "Pause briefly at the top and lower with control."
+          ],
+        },
+        {
+          name: "Romanian Deadlift",
+          sets: 3,
+          reps: 8,
+          repRange: [8, 10],
+          description: "Hip hinge for glutes and hamstrings with minimal knee bend.",
+          tips: [
+            "Push hips back and keep the weights close to your legs.",
+            "Stop when your back wants to round.",
+            "Stand tall by squeezing glutes, not leaning back."
+          ],
+        },
+        {
+          name: "Plank / Dead Bug",
+          sets: 3,
+          reps: "30 sec",
+          repRange: [30, 45],
+          optional: true,
+          description: "Optional trunk stability work to reinforce control and bracing.",
+          tips: [
+            "Keep your ribcage down and pelvis quiet.",
+            "Breathe normally instead of holding tension in your neck.",
+            "Choose the variation you can control cleanly."
+          ],
+        },
       ],
     },
   ],
@@ -197,6 +253,8 @@ const todayCard = document.getElementById("today-card");
 const updateBanner = document.getElementById("update-banner");
 const updateBannerText = document.getElementById("update-banner-text");
 const refreshAppButton = document.getElementById("refresh-app");
+const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
+const viewSections = Array.from(document.querySelectorAll("[data-view]"));
 const summaryStats = document.getElementById("summary-stats");
 const signalsList = document.getElementById("signals-list");
 const guardrailList = document.getElementById("guardrail-list");
@@ -241,6 +299,9 @@ function initialize() {
   exportSummaryCsvButton.addEventListener("click", () => exportCsv("summary"));
   importJsonInput.addEventListener("change", importJson);
   refreshAppButton.addEventListener("click", forceRefreshApp);
+  for (const button of tabButtons) {
+    button.addEventListener("click", () => setActiveTab(button.dataset.tab));
+  }
 
   registerServiceWorker();
 
@@ -326,6 +387,7 @@ function createEmptyState() {
       lastUnlockedSevenDayAvgWeight: null,
       lastClaimedSevenDayAvgWeight: null,
       currentStrengthSession: null,
+      activeTab: "today",
     },
   };
 }
@@ -368,6 +430,7 @@ function migrateState(parsed, sourceKey) {
     lastUnlockedSevenDayAvgWeight: parsed.meta?.lastUnlockedSevenDayAvgWeight ?? parsed.meta?.lowestAvgWeightRewarded ?? null,
     lastClaimedSevenDayAvgWeight: parsed.meta?.lastClaimedSevenDayAvgWeight ?? null,
     currentStrengthSession: migrateStrengthSession(parsed.meta?.currentStrengthSession, strengthPlan),
+    activeTab: parsed.meta?.activeTab || "today",
   };
 
   const migrated = {
@@ -496,6 +559,8 @@ function migrateStrengthSession(session, strengthPlan = defaultStrengthPlan) {
       const prior = exerciseMap.get(exercise.name) || {};
       return {
         name: exercise.name,
+        description: exercise.description || prior.description || "",
+        tips: exercise.tips || prior.tips || [],
         targetSets: Number(prior.targetSets || exercise.sets) || exercise.sets,
         targetReps: prior.targetReps ?? exercise.reps,
         actualSets: Array.isArray(prior.actualSets) ? prior.actualSets.map((set, index) => ({
@@ -569,6 +634,31 @@ function handleModeChange() {
   saveState();
   render();
   setStatus(`${capitalize(state.settings.mode)} mode enabled.`);
+}
+
+function setActiveTab(tab) {
+  state.meta.activeTab = tab;
+  saveState();
+  renderTabState();
+}
+
+function renderTabState() {
+  const activeTab = state.meta.activeTab || "today";
+  for (const button of tabButtons) {
+    button.classList.toggle("active", button.dataset.tab === activeTab);
+  }
+  for (const section of viewSections) {
+    const allowedViews = section.dataset.view.split(" ");
+    const shouldShowForTab = allowedViews.includes(activeTab);
+    const maintenanceBlocked = state.settings.mode === "maintenance" && (
+      section === logPanel ||
+      section === rewardsPanel ||
+      section === storyPanel ||
+      section === activityPanel
+    );
+    const strengthBlocked = section === strengthPanel && !state.strengthSettings.enabled;
+    section.classList.toggle("is-hidden", !shouldShowForTab || maintenanceBlocked || strengthBlocked);
+  }
 }
 
 function handleDateChange() {
@@ -791,13 +881,7 @@ function render() {
   lastExportStatus.textContent = formatRelativeExport(state.meta?.lastExportAt);
   document.body.classList.toggle("maintenance-mode", state.settings.mode === "maintenance");
   foodSection.classList.toggle("is-hidden", state.settings.mode === "maintenance");
-  logPanel.classList.toggle("is-hidden", state.settings.mode === "maintenance");
-  strengthPanel.classList.toggle("is-hidden", !state.strengthSettings.enabled);
-  scorecardPanel.classList.toggle("is-hidden", false);
-  progressPanel.classList.toggle("is-hidden", false);
-  rewardsPanel.classList.toggle("is-hidden", state.settings.mode === "maintenance");
-  storyPanel.classList.toggle("is-hidden", state.settings.mode === "maintenance");
-  activityPanel.classList.toggle("is-hidden", state.settings.mode === "maintenance");
+  renderTabState();
 }
 
 function computeSummary() {
@@ -1832,9 +1916,16 @@ function renderStrengthCard(summary) {
           <div class="strength-exercise-top">
             <div>
               <div class="strength-exercise-name">${escapeHtml(exercise.name)}</div>
+              <div class="strength-exercise-meta">${escapeHtml(exercise.description || "Simple full-body strength work.")}</div>
               <div class="strength-exercise-meta">Target ${escapeHtml(String(exercise.targetSets || exercise.sets))} x ${escapeHtml(String(exercise.targetReps || exercise.reps))}</div>
               <div class="strength-exercise-meta">Last: ${escapeHtml(lastWeight || "--")} ${lastReps ? `for ${escapeHtml(lastReps)}` : ""}</div>
               <div class="strength-exercise-meta">${escapeHtml(getExerciseProgressionSuggestion(exercise))}</div>
+              <details class="exercise-tips">
+                <summary>Form tips</summary>
+                <ul>
+                  ${(exercise.tips || []).map((tip) => `<li>${escapeHtml(tip)}</li>`).join("")}
+                </ul>
+              </details>
             </div>
           </div>
           <div class="strength-sets">
