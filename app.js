@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.1.0";
+const APP_VERSION = "v4.2.0";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const mealSlots = ["morning", "lunch", "afternoon", "dinner", "other"];
@@ -31,12 +31,54 @@ const dayThresholds = {
   solid: 55,
 };
 const foodOptions = {
-  0: { label: "Ate nothing / N/A", quality: null, score: 0 },
-  1: { label: "On track", quality: 1 },
-  2: { label: "Good food, larger portions or worse food with control", quality: 0.82, score: 0.82 },
-  3: { label: "Worse food, little control, still mindful", quality: 0.5, score: 0.5 },
-  4: { label: "Ate until full", quality: 0.18, score: 0.18 },
-  5: { label: "Stuffed myself", quality: 0, score: 0 },
+  0: {
+    shortLabel: "N/A",
+    label: "Ate nothing / N/A",
+    description: "Meal not eaten, fasting, or not applicable.",
+    quality: null,
+    score: 0,
+    bucket: "n/a",
+  },
+  1: {
+    shortLabel: "On track",
+    label: "On track",
+    description: "Ate with control and intention. Food choices and portions were appropriate. No loss of control. Could include treats if handled reasonably.",
+    quality: 1,
+    score: 1,
+    bucket: "in_control",
+  },
+  2: {
+    shortLabel: "Slight drift",
+    label: "Good, but a little off",
+    description: "Either food quality or portions were somewhat off. Still in control overall. No real overeating.",
+    quality: 0.84,
+    score: 0.84,
+    bucket: "in_control",
+  },
+  3: {
+    shortLabel: "Warning",
+    label: "Worse food or less control, but still mindful",
+    description: "Noticeable slip. Ate more than needed or made weaker choices, but still somewhat aware. This is a warning-level score.",
+    quality: 0.5,
+    score: 0.5,
+    bucket: "warning",
+  },
+  4: {
+    shortLabel: "Overate",
+    label: "Ate until full",
+    description: "Clear overeating. Low control during at least part of the eating episode or day. Ate to fullness or beyond what was needed.",
+    quality: 0.16,
+    score: 0.16,
+    bucket: "off_track",
+  },
+  5: {
+    shortLabel: "Stuffed",
+    label: "Stuffed myself",
+    description: "Fully off track. Ate well past fullness. Strong loss of control. Physically uncomfortable or clearly overdid it.",
+    quality: 0,
+    score: 0,
+    bucket: "off_track",
+  },
 };
 
 const defaultSettings = {
@@ -46,6 +88,31 @@ const defaultSettings = {
   exerciseGoal: 30,
   weightGoal: 185,
   bodyFatGoal: 20,
+};
+const defaultStrengthSettings = {
+  enabled: true,
+  daysPerWeek: 3,
+  preferredDays: ["Mon", "Wed", "Fri"],
+  defaultWorkoutDuration: 30,
+  equipment: ["dumbbells", "bodyweight"],
+  storyIntegration: true,
+};
+const defaultStrengthPlan = {
+  version: 1,
+  name: "Beginner Full Body",
+  workouts: [
+    {
+      id: "full-body-a",
+      name: "Strength Quest A",
+      exercises: [
+        { name: "Goblet Squat", sets: 3, reps: 8, repRange: [8, 10] },
+        { name: "Dumbbell Bench Press / Incline Push-Ups", sets: 3, reps: 8, repRange: [8, 10] },
+        { name: "One-Arm Dumbbell Row", sets: 3, reps: 8, repRange: [8, 10] },
+        { name: "Romanian Deadlift", sets: 3, reps: 8, repRange: [8, 10] },
+        { name: "Plank / Dead Bug", sets: 3, reps: "30 sec", repRange: [30, 45], optional: true },
+      ],
+    },
+  ],
 };
 
 const campaignMeta = {
@@ -99,6 +166,10 @@ const weightGoalInput = document.getElementById("weight-goal");
 const bodyFatGoalInput = document.getElementById("body-fat-goal");
 const saveProfileButton = document.getElementById("save-profile");
 const exportJsonButton = document.getElementById("export-json");
+const exportFoodCsvButton = document.getElementById("export-food-csv");
+const exportBodyCsvButton = document.getElementById("export-body-csv");
+const exportStrengthCsvButton = document.getElementById("export-strength-csv");
+const exportSummaryCsvButton = document.getElementById("export-summary-csv");
 const importJsonInput = document.getElementById("import-json");
 
 const entryDateInput = document.getElementById("entry-date");
@@ -127,8 +198,12 @@ const updateBanner = document.getElementById("update-banner");
 const updateBannerText = document.getElementById("update-banner-text");
 const refreshAppButton = document.getElementById("refresh-app");
 const summaryStats = document.getElementById("summary-stats");
+const signalsList = document.getElementById("signals-list");
 const guardrailList = document.getElementById("guardrail-list");
 const chartWrap = document.getElementById("chart-wrap");
+const strengthCard = document.getElementById("strength-card");
+const scorecardCard = document.getElementById("scorecard-card");
+const progressCard = document.getElementById("progress-card");
 const rewardList = document.getElementById("reward-list");
 const storyCard = document.getElementById("story-card");
 const dayList = document.getElementById("day-list");
@@ -136,6 +211,9 @@ const lastExportStatus = document.getElementById("last-export-status");
 const appVersion = document.getElementById("app-version");
 const footerVersion = document.getElementById("footer-version");
 const logPanel = document.querySelector(".log-panel");
+const strengthPanel = document.querySelector(".strength-panel");
+const scorecardPanel = document.querySelector(".scorecard-panel");
+const progressPanel = document.querySelector(".progress-panel");
 const rewardsPanel = document.querySelector(".rewards-panel");
 const storyPanel = document.querySelector(".story-panel");
 const activityPanel = document.querySelector(".activity-panel");
@@ -157,6 +235,10 @@ function initialize() {
   addRewardButton.addEventListener("click", addReward);
   rewardTypeInput.addEventListener("change", renderRewardValueVisibility);
   exportJsonButton.addEventListener("click", exportJson);
+  exportFoodCsvButton.addEventListener("click", () => exportCsv("food"));
+  exportBodyCsvButton.addEventListener("click", () => exportCsv("body"));
+  exportStrengthCsvButton.addEventListener("click", () => exportCsv("strength"));
+  exportSummaryCsvButton.addEventListener("click", () => exportCsv("summary"));
   importJsonInput.addEventListener("change", importJson);
   refreshAppButton.addEventListener("click", forceRefreshApp);
 
@@ -230,8 +312,11 @@ function loadState() {
 
 function createEmptyState() {
   return {
-    version: 5,
+    version: 6,
     settings: { ...defaultSettings },
+    strengthSettings: { ...defaultStrengthSettings },
+    strengthPlan: JSON.parse(JSON.stringify(defaultStrengthPlan)),
+    strengthHistory: [],
     entries: {},
     rewards: [],
     meta: {
@@ -240,6 +325,7 @@ function createEmptyState() {
       bestSevenDayAvgWeight: null,
       lastUnlockedSevenDayAvgWeight: null,
       lastClaimedSevenDayAvgWeight: null,
+      currentStrengthSession: null,
     },
   };
 }
@@ -250,6 +336,13 @@ function migrateState(parsed, sourceKey) {
     ...base.settings,
     ...(parsed.settings || {}),
   };
+  const strengthSettings = {
+    ...base.strengthSettings,
+    ...(parsed.strengthSettings || {}),
+  };
+  const strengthPlan = parsed.strengthPlan?.workouts?.length
+    ? parsed.strengthPlan
+    : JSON.parse(JSON.stringify(defaultStrengthPlan));
 
   if (!settings.mode) {
     settings.mode = "full";
@@ -274,11 +367,15 @@ function migrateState(parsed, sourceKey) {
     bestSevenDayAvgWeight: parsed.meta?.bestSevenDayAvgWeight ?? parsed.meta?.lowestAvgWeightRewarded ?? null,
     lastUnlockedSevenDayAvgWeight: parsed.meta?.lastUnlockedSevenDayAvgWeight ?? parsed.meta?.lowestAvgWeightRewarded ?? null,
     lastClaimedSevenDayAvgWeight: parsed.meta?.lastClaimedSevenDayAvgWeight ?? null,
+    currentStrengthSession: migrateStrengthSession(parsed.meta?.currentStrengthSession, strengthPlan),
   };
 
   const migrated = {
-    version: 5,
+    version: 6,
     settings,
+    strengthSettings,
+    strengthPlan,
+    strengthHistory: Array.isArray(parsed.strengthHistory) ? parsed.strengthHistory.map((session) => migrateStrengthSession(session, strengthPlan)) : [],
     entries,
     rewards,
     meta,
@@ -343,10 +440,11 @@ function migrateEntry(dateKey, rawEntry, sourceVersion = 4) {
     mode: rawEntry?.mode || "full",
     steps: Number(rawEntry?.steps) || 0,
     exerciseMinutes: Number(rawEntry?.exerciseMinutes) || 0,
-    weight: rawEntry?.weight == null ? null : Number(rawEntry.weight),
-    bodyFat: rawEntry?.bodyFat == null ? null : Number(rawEntry.bodyFat),
-    notes: typeof rawEntry?.notes === "string" ? rawEntry.notes.slice(0, 120) : "",
-    food: migratedFood,
+      weight: rawEntry?.weight == null ? null : Number(rawEntry.weight),
+      bodyFat: rawEntry?.bodyFat == null ? null : Number(rawEntry.bodyFat),
+      notes: typeof rawEntry?.notes === "string" ? rawEntry.notes.slice(0, 120) : "",
+      foodNote: typeof rawEntry?.foodNote === "string" ? rawEntry.foodNote.slice(0, 120) : "",
+      food: migratedFood,
     habits: {
       protein: Boolean(rawEntry?.habits?.protein),
       produce: Boolean(rawEntry?.habits?.produce),
@@ -373,6 +471,50 @@ function migrateReward(reward) {
     criteriaType: "level",
     criteriaValue: reward.unlockLevel ?? 1,
     claimed: Boolean(reward.claimed),
+  };
+}
+
+function migrateStrengthSession(session, strengthPlan = defaultStrengthPlan) {
+  if (!session) {
+    return null;
+  }
+
+  const workout = strengthPlan.workouts.find((item) => item.id === session.workoutId) || strengthPlan.workouts[0];
+  const exerciseMap = new Map((session.exercises || []).map((exercise) => [exercise.name, exercise]));
+
+  return {
+    id: session.id || createId(),
+    date: session.date || getTodayKey(),
+    workoutId: session.workoutId || workout.id,
+    workoutName: session.workoutName || workout.name,
+    completed: Boolean(session.completed),
+    durationMinutes: Number(session.durationMinutes) || defaultStrengthSettings.defaultWorkoutDuration,
+    workoutScore: session.workoutScore == null ? null : Number(session.workoutScore),
+    workoutScoreOverride: session.workoutScoreOverride == null ? null : Number(session.workoutScoreOverride),
+    note: typeof session.note === "string" ? session.note.slice(0, 160) : "",
+    exercises: workout.exercises.map((exercise) => {
+      const prior = exerciseMap.get(exercise.name) || {};
+      return {
+        name: exercise.name,
+        targetSets: Number(prior.targetSets || exercise.sets) || exercise.sets,
+        targetReps: prior.targetReps ?? exercise.reps,
+        actualSets: Array.isArray(prior.actualSets) ? prior.actualSets.map((set, index) => ({
+          set: index + 1,
+          weight: set.weight ?? "",
+          reps: set.reps ?? "",
+          completed: Boolean(set.completed),
+        })) : Array.from({ length: exercise.sets }, (_, index) => ({
+          set: index + 1,
+          weight: "",
+          reps: "",
+          completed: false,
+        })),
+        completed: Boolean(prior.completed),
+        progressed: Boolean(prior.progressed),
+        pr: Boolean(prior.pr),
+        note: typeof prior.note === "string" ? prior.note.slice(0, 120) : "",
+      };
+    }),
   };
 }
 
@@ -456,9 +598,10 @@ function getEntry(dateKey) {
     steps: 0,
     exerciseMinutes: 0,
     weight: null,
-    bodyFat: null,
-    notes: "",
-    food: createEmptyFoodEntry(),
+      bodyFat: null,
+      notes: "",
+      foodNote: "",
+      food: createEmptyFoodEntry(),
     habits: {
       protein: false,
       produce: false,
@@ -496,10 +639,11 @@ function saveDailyEntry() {
     mode: state.settings.mode,
     steps: clampNumber(entryStepsInput.value, 0, 100000, 0),
     exerciseMinutes: clampNumber(entryExerciseInput.value, 0, 300, 0),
-    weight: parseOptionalNumber(entryWeightInput.value),
-    bodyFat: parseOptionalNumber(entryBodyFatInput.value),
-    notes: (entryNotesInput.value || "").trim().slice(0, 120),
-    food: readFoodForm(getEntry(dateKey).food),
+      weight: parseOptionalNumber(entryWeightInput.value),
+      bodyFat: parseOptionalNumber(entryBodyFatInput.value),
+      notes: (entryNotesInput.value || "").trim().slice(0, 120),
+      foodNote: (document.getElementById("today-food-note")?.value || getEntry(dateKey).foodNote || "").trim().slice(0, 120),
+      food: readFoodForm(getEntry(dateKey).food),
     habits: {
       protein: habitProteinInput.checked,
       produce: habitProduceInput.checked,
@@ -531,7 +675,7 @@ function renderFoodLog() {
     .map(([value, option]) => `
       <article class="food-row legend-row">
         <div class="food-label">${value}</div>
-        <div class="food-legend-copy">${escapeHtml(option.label)}</div>
+        <div class="food-legend-copy"><strong>${escapeHtml(option.shortLabel)}</strong> — ${escapeHtml(option.description)}</div>
       </article>
     `)
     .join("");
@@ -635,7 +779,11 @@ async function importJson(event) {
 function render() {
   const summary = computeSummary();
   renderTodayCard(summary);
+  renderStrengthCard(summary);
   renderWeeklySummary(summary);
+  renderSignals(summary);
+  renderScorecard(summary);
+  renderProgress(summary);
   renderCharts(summary);
   renderRewards(summary);
   renderStory(summary);
@@ -644,6 +792,9 @@ function render() {
   document.body.classList.toggle("maintenance-mode", state.settings.mode === "maintenance");
   foodSection.classList.toggle("is-hidden", state.settings.mode === "maintenance");
   logPanel.classList.toggle("is-hidden", state.settings.mode === "maintenance");
+  strengthPanel.classList.toggle("is-hidden", !state.strengthSettings.enabled);
+  scorecardPanel.classList.toggle("is-hidden", false);
+  progressPanel.classList.toggle("is-hidden", false);
   rewardsPanel.classList.toggle("is-hidden", state.settings.mode === "maintenance");
   storyPanel.classList.toggle("is-hidden", state.settings.mode === "maintenance");
   activityPanel.classList.toggle("is-hidden", state.settings.mode === "maintenance");
@@ -667,6 +818,14 @@ function computeSummary() {
   const bestEliteStreak = calculateBestStreak(timelineFilled, (day) => day.totalScore >= dayThresholds.win);
   const weekly = computeWeeklyMetrics(loggedEntries);
   syncRewardMilestones(weekly);
+  const strengthSession = getStrengthSessionForDate(getSelectedDateKey());
+  const strengthStatus = getStrengthStatus(getSelectedDateKey());
+  const strengthSummary = {
+    session: strengthSession,
+    status: strengthStatus,
+    nextDay: getNextStrengthDay(getSelectedDateKey()),
+    progress: getStrengthProgressSummary(),
+  };
   const rewards = state.rewards.map((reward) => ({
     ...reward,
     unlocked: isRewardUnlocked(reward, { level, regularStreak, loggedEntries, weekly }),
@@ -691,6 +850,10 @@ function computeSummary() {
     rewards,
     currentChapter: getCurrentChapter(level),
     bossFight: getBossFight({ loggedEntries, weekly, regularStreak, eliteStreak }),
+    strength: strengthSummary,
+    signals: buildSignals(loggedEntries, weekly, strengthSummary),
+    scorecard: buildWeeklyScorecard(loggedEntries, weekly, strengthSummary),
+    progress: buildProgressSummary(loggedEntries, weekly, strengthSummary),
   };
 }
 
@@ -706,10 +869,11 @@ function getDraftEntry() {
     mode: state.settings.mode,
     steps: clampNumber(entryStepsInput.value, 0, 100000, 0),
     exerciseMinutes: clampNumber(entryExerciseInput.value, 0, 300, 0),
-    weight: parseOptionalNumber(entryWeightInput.value),
-    bodyFat: parseOptionalNumber(entryBodyFatInput.value),
-    notes: (entryNotesInput.value || "").trim().slice(0, 120),
-    food: readFoodForm(getEntry(dateKey).food),
+      weight: parseOptionalNumber(entryWeightInput.value),
+      bodyFat: parseOptionalNumber(entryBodyFatInput.value),
+      notes: (entryNotesInput.value || "").trim().slice(0, 120),
+      foodNote: (document.getElementById("today-food-note")?.value || getEntry(dateKey).foodNote || "").trim().slice(0, 120),
+      food: readFoodForm(getEntry(dateKey).food),
     habits: {
       protein: habitProteinInput.checked,
       produce: habitProduceInput.checked,
@@ -1148,6 +1312,214 @@ function syncRewardMilestones(weekly) {
   }
 }
 
+function getWorkoutPlan() {
+  return state.strengthPlan?.workouts?.[0] || defaultStrengthPlan.workouts[0];
+}
+
+function getWeekdayCode(dateKey) {
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(`${dateKey}T12:00:00`).getDay()];
+}
+
+function isStrengthDay(dateKey) {
+  return state.strengthSettings.enabled && state.strengthSettings.preferredDays.includes(getWeekdayCode(dateKey));
+}
+
+function getNextStrengthDay(dateKey) {
+  const cursor = new Date(`${dateKey}T12:00:00`);
+  for (let index = 1; index <= 7; index += 1) {
+    cursor.setDate(cursor.getDate() + 1);
+    const candidate = cursor.toISOString().slice(0, 10);
+    if (isStrengthDay(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function getStrengthSessionForDate(dateKey) {
+  if (state.meta.currentStrengthSession?.date === dateKey) {
+    return state.meta.currentStrengthSession;
+  }
+  return state.strengthHistory.find((session) => session.date === dateKey) || null;
+}
+
+function getLastCompletedStrengthSession() {
+  return [...state.strengthHistory].reverse().find((session) => session.completed) || null;
+}
+
+function getLastExercisePerformance(name) {
+  for (let index = state.strengthHistory.length - 1; index >= 0; index -= 1) {
+    const session = state.strengthHistory[index];
+    const exercise = session.exercises?.find((item) => item.name === name && item.actualSets?.some((set) => set.reps || set.weight));
+    if (exercise) {
+      return { session, exercise };
+    }
+  }
+  return null;
+}
+
+function getExerciseProgressionSuggestion(exercise) {
+  const previous = getLastExercisePerformance(exercise.name);
+  if (!previous) {
+    return `Start with a manageable load for ${exercise.sets}x${exercise.reps}.`;
+  }
+
+  const lastSets = previous.exercise.actualSets || [];
+  const numericTarget = Number(exercise.repRange?.[0] || exercise.reps || 0);
+  const topRep = Number(exercise.repRange?.[1] || exercise.reps || numericTarget);
+  const allHitTarget = lastSets.length >= exercise.sets && lastSets.every((set) => Number(set.reps || 0) >= numericTarget);
+  const allHitTop = lastSets.length >= exercise.sets && lastSets.every((set) => Number(set.reps || 0) >= topRep);
+  const lastWeight = lastSets.find((set) => set.weight)?.weight || "";
+
+  if (allHitTop && lastWeight) {
+    return `You've earned a weight increase next session. Try ${lastWeight} + a small bump and restart at ${numericTarget} reps.`;
+  }
+  if (allHitTarget) {
+    return `Try ${lastWeight || "the same load"} for ${exercise.sets}x${numericTarget + 1} today.`;
+  }
+  return `Repeat ${lastWeight || "the same load"} and own the prescription before adding more.`;
+}
+
+function createStrengthSession(dateKey) {
+  const workout = getWorkoutPlan();
+  return migrateStrengthSession({
+    date: dateKey,
+    workoutId: workout.id,
+    workoutName: workout.name,
+    durationMinutes: state.strengthSettings.defaultWorkoutDuration,
+    completed: false,
+    exercises: workout.exercises.map((exercise) => {
+      const last = getLastExercisePerformance(exercise.name);
+      const lastWeight = last?.exercise?.actualSets?.find((set) => set.weight)?.weight || "";
+      const actualSets = Array.from({ length: exercise.sets }, (_, index) => ({
+        set: index + 1,
+        weight: lastWeight,
+        reps: "",
+        completed: false,
+      }));
+      return {
+        name: exercise.name,
+        targetSets: exercise.sets,
+        targetReps: exercise.reps,
+        actualSets,
+        completed: false,
+        progressed: false,
+        pr: false,
+        note: "",
+      };
+    }),
+  }, state.strengthPlan);
+}
+
+function getCompletedStrengthWorkoutsInWindow(days = 7) {
+  const end = new Date(`${getTodayKey()}T12:00:00`);
+  const start = new Date(end);
+  start.setDate(start.getDate() - (days - 1));
+  return state.strengthHistory.filter((session) => {
+    const date = new Date(`${session.date}T12:00:00`);
+    return session.completed && date >= start && date <= end;
+  });
+}
+
+function getStrengthProgressSummary() {
+  const workoutsThisWeek = getCompletedStrengthWorkoutsInWindow(7);
+  const workoutsThisMonth = getCompletedStrengthWorkoutsInWindow(30);
+  const keyExercises = ["Goblet Squat", "Dumbbell Bench Press / Incline Push-Ups", "One-Arm Dumbbell Row", "Romanian Deadlift"];
+  const liftProgress = keyExercises.map((name) => {
+    const sessions = state.strengthHistory
+      .map((session) => ({
+        date: session.date,
+        exercise: session.exercises?.find((item) => item.name === name),
+      }))
+      .filter((item) => item.exercise?.actualSets?.some((set) => set.weight || set.reps));
+    if (!sessions.length) {
+      return null;
+    }
+    const firstWeight = Number(sessions[0].exercise.actualSets.find((set) => set.weight)?.weight || 0);
+    const latestWeight = Number(sessions[sessions.length - 1].exercise.actualSets.find((set) => set.weight)?.weight || 0);
+    return {
+      name,
+      firstWeight,
+      latestWeight,
+    };
+  }).filter(Boolean);
+
+  return {
+    workoutsThisWeek,
+    workoutsThisMonth,
+    liftProgress,
+  };
+}
+
+function getStrengthStatus(dateKey) {
+  const session = getStrengthSessionForDate(dateKey);
+  if (session?.completed) {
+    return "complete";
+  }
+  if (session && !session.completed) {
+    return "in_progress";
+  }
+  return isStrengthDay(dateKey) ? "due" : "not_due";
+}
+
+function getTodayFocus(summary) {
+  const dateKey = getSelectedDateKey();
+  const liftStatus = getStrengthStatus(dateKey);
+  if (liftStatus === "due") {
+    return "Stay on track with food and complete your strength workout.";
+  }
+  if (liftStatus === "in_progress") {
+    return "Finish your workout cleanly and keep food control steady late.";
+  }
+  return "Recovery day: stay steady with food, movement, and trend-aware decisions.";
+}
+
+function getKeyActions(summary) {
+  const actions = [];
+  if (getStrengthStatus(getSelectedDateKey()) === "due") {
+    actions.push("Complete Strength Quest workout");
+  }
+  if (summary.today.foodIsProvisional) {
+    actions.push("Log food honestly");
+  }
+  if (summary.today.stepPoints < scoringWeights.steps * 0.75) {
+    actions.push("Hit movement goal");
+  }
+  if ((summary.today.food?.other ?? 0) < 4) {
+    actions.push("Stay out of 4-5 eating territory");
+  }
+  return actions.slice(0, 3);
+}
+
+function getFoodStatusSummary(day) {
+  const logged = mealSlots.filter((slot) => day.food[slot] != null);
+  if (!logged.length) {
+    return "No meals logged yet";
+  }
+  const buckets = logged.map((slot) => foodOptions[day.food[slot]]?.bucket);
+  if (buckets.every((bucket) => bucket === "in_control" || bucket === "n/a")) {
+    return "In control";
+  }
+  if (buckets.some((bucket) => bucket === "off_track")) {
+    return "Off track";
+  }
+  return "Warning";
+}
+
+function getStrengthStoryHook(summary) {
+  const workoutsThisWeek = getCompletedStrengthWorkoutsInWindow(7).length;
+  if (workoutsThisWeek >= 3) {
+    return "Training Grounds cleared this week.";
+  }
+  if (summary.strength.status === "complete") {
+    return "Momentum is building.";
+  }
+  if (summary.strength.status === "due") {
+    return "The forge is lit. Strength work is due today.";
+  }
+  return "You held the line this week.";
+}
+
 function getTodayBreakdownNote(day) {
   if (day.foodIsProvisional) {
     return "Some of today's score is still provisional because the day is not fully logged.";
@@ -1173,11 +1545,13 @@ function renderTodayCard(summary) {
   const isMaintenance = state.settings.mode === "maintenance";
   const chapter = summary.currentChapter;
   const todayFood = readFoodForm(today.food);
+  const focus = getTodayFocus(summary);
+  const keyActions = getKeyActions(summary);
   const quickStats = [
-    { label: "Score", value: `${today.totalScore}` },
-    { label: "XP", value: `+${today.totalScore + today.bonusXp}` },
-    { label: "Day Type", value: capitalize(today.dayType) },
-    { label: "Mode", value: capitalize(today.mode) },
+    { label: "Food", value: getFoodStatusSummary(today) },
+    { label: "Strength", value: capitalize(summary.strength.status.replace("_", " ")) },
+    { label: "Weight Trend", value: summary.weekly.gapFromBestWeightAverage != null && summary.weekly.gapFromBestWeightAverage <= 0.3 ? "Near best" : summary.weekly.latestWeeklyWeightAverage != null && summary.weekly.priorWeightAverage != null && summary.weekly.latestWeeklyWeightAverage <= summary.weekly.priorWeightAverage ? "Trending down" : "Watch trend" },
+    { label: "Consistency", value: `${summary.regularStreak} day streak` },
   ];
   const noteMarkup = `
     <label class="quick-field quick-notes">
@@ -1192,6 +1566,16 @@ function renderTodayCard(summary) {
         <div class="today-kicker">${escapeHtml(selectedDateLabel)}</div>
         <div class="today-score">${today.totalScore}</div>
         <div class="today-copy">Win day at 75+. Solid day at 55-74. Regular streak survives solid days; elite streak needs wins.</div>
+        <div class="today-focus">
+          <div class="today-focus-label">Today's Focus</div>
+          <div class="today-focus-copy">${escapeHtml(focus)}</div>
+        </div>
+        <div class="today-focus">
+          <div class="today-focus-label">Key Actions</div>
+          <div class="today-actions-list">
+            ${keyActions.map((action) => `<div class="today-action-pill">${escapeHtml(action)}</div>`).join("")}
+          </div>
+        </div>
         <div class="chapter-banner">
           <div class="chapter-label">${escapeHtml(campaignMeta.title)}</div>
           <div class="chapter-title">${escapeHtml(chapter.title)}</div>
@@ -1206,6 +1590,14 @@ function renderTodayCard(summary) {
         <div class="boss-fight-card">
           <div class="boss-title">Boss Fight: ${escapeHtml(summary.bossFight.title)}</div>
           <div class="boss-copy">${escapeHtml(summary.bossFight.body)}</div>
+        </div>
+        <div class="strength-inline-card">
+          <div class="boss-title">Strength Quest</div>
+          <div class="boss-copy">${escapeHtml(getStrengthStoryHook(summary))}</div>
+          <div class="strength-inline-meta">
+            <span>${summary.strength.status === "due" ? "Workout due today" : summary.strength.status === "complete" ? "Workout complete" : summary.strength.status === "in_progress" ? "Workout in progress" : "Recovery / non-lifting day"}</span>
+            <span>${summary.strength.nextDay ? `Next: ${formatDisplayDate(summary.strength.nextDay)}` : "Next session pending"}</span>
+          </div>
         </div>
         <div class="quick-fields">
           ${isMaintenance ? "" : `
@@ -1242,14 +1634,14 @@ function renderTodayCard(summary) {
             <div class="today-meals">
               <div class="today-meals-header">
                 <span>Meals</span>
-                <span class="today-meals-hint">Tap a number. Full legend below.</span>
+                <span class="today-meals-hint">Tap a number. Full legend below. <button id="repeat-last-meals" type="button" class="mini-action">Repeat last meals</button></span>
               </div>
               ${mealSlots.map((slot) => `
                 <div class="today-meal-row">
                   <div class="today-meal-label">${escapeHtml(getMealDisplayLabel(slot))}</div>
                   <div class="today-meal-options">
                     ${Object.keys(foodOptions).map((value) => `
-                      <label class="today-meal-chip ${Number(value) === todayFood[slot] ? "active" : ""}">
+                      <label class="today-meal-chip ${Number(value) === todayFood[slot] ? "active" : ""}" title="${escapeHtml(foodOptions[value].shortLabel)}">
                       <input
                         type="radio"
                         name="today-food-${escapeHtml(slot)}"
@@ -1262,6 +1654,10 @@ function renderTodayCard(summary) {
                 </div>
                 </div>
               `).join("")}
+              <label class="quick-field quick-notes">
+                <span>Food note</span>
+                <input id="today-food-note" type="text" maxlength="120" value="${escapeHtml(today.foodNote || "")}" placeholder="late snack, client lunch, dessert stack">
+              </label>
               ${today.foodIsProvisional ? `<div class="today-meals-reminder">Food score is provisional until more of the day is logged.</div>` : ""}
             </div>
           `}
@@ -1287,6 +1683,10 @@ function renderTodayCard(summary) {
 
   wireTodayQuickInputs();
   wireTodayMealInputs();
+  const repeatMealsButton = document.getElementById("repeat-last-meals");
+  if (repeatMealsButton) {
+    repeatMealsButton.addEventListener("click", repeatLastMeals);
+  }
 }
 
 function wireTodayQuickInputs() {
@@ -1308,6 +1708,29 @@ function wireTodayMealInputs() {
       render();
     });
   }
+}
+
+function repeatLastMeals() {
+  const lastEntry = [...Object.values(state.entries)]
+    .map((entry) => migrateEntry(entry.date, entry))
+    .filter((entry) => entry.date < getSelectedDateKey() && mealSlots.some((slot) => entry.food[slot] != null))
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
+
+  if (!lastEntry) {
+    setStatus("No recent meal pattern found to repeat yet.");
+    return;
+  }
+
+  const current = getEntry(getSelectedDateKey());
+  state.entries[getSelectedDateKey()] = {
+    ...current,
+    date: getSelectedDateKey(),
+    food: { ...lastEntry.food },
+    foodNote: lastEntry.foodNote || current.foodNote || "",
+  };
+  saveState();
+  render();
+  setStatus(`Repeated meals from ${formatDisplayDate(lastEntry.date)}.`);
 }
 
 function syncQuickInput(sourceId, targetInput, rerender = false) {
@@ -1367,6 +1790,359 @@ function renderWeeklySummary(summary) {
     `);
   }
   guardrailList.innerHTML = guardrailMarkup.join("");
+}
+
+function renderStrengthCard(summary) {
+  const dateKey = getSelectedDateKey();
+  const workout = getWorkoutPlan();
+  const session = summary.strength.session;
+  const isDue = summary.strength.status === "due";
+  const isInProgress = summary.strength.status === "in_progress";
+  const isComplete = summary.strength.status === "complete";
+  const exercises = (session?.exercises || workout.exercises.map((exercise) => ({
+    ...exercise,
+    targetSets: exercise.sets,
+    targetReps: exercise.reps,
+    actualSets: Array.from({ length: exercise.sets }, (_, index) => ({ set: index + 1, weight: "", reps: "", completed: false })),
+  })));
+
+  strengthCard.innerHTML = `
+    <div class="strength-hero">
+      <div>
+        <div class="strength-kicker">${isStrengthDay(dateKey) ? "Workout scheduled today" : "Recovery / non-lifting day"}</div>
+        <h3>${escapeHtml(workout.name)}</h3>
+        <p>${isStrengthDay(dateKey) ? "Thirty-minute full-body session. Progress with clean reps and steady effort." : `Next lifting day: ${summary.strength.nextDay ? formatDisplayDate(summary.strength.nextDay) : "TBD"}`}</p>
+      </div>
+      <div class="strength-actions">
+        ${isComplete
+          ? `<button type="button" class="secondary-button" disabled>Workout Complete</button>`
+          : isDue || isInProgress
+            ? `<button id="start-strength-session" type="button">${isInProgress ? "Resume Workout" : "Start Workout"}</button>`
+            : `<button type="button" class="secondary-button" disabled>Recovery Day</button>`}
+      </div>
+    </div>
+    <div class="strength-list">
+      ${exercises.map((exercise, exerciseIndex) => `
+        ${(() => {
+          const last = getLastExercisePerformance(exercise.name);
+          const lastWeight = last?.exercise?.actualSets?.find((set) => set.weight)?.weight || "";
+          const lastReps = last?.exercise?.actualSets?.map((set) => set.reps).filter(Boolean).join("/") || "";
+          return `
+        <article class="strength-exercise">
+          <div class="strength-exercise-top">
+            <div>
+              <div class="strength-exercise-name">${escapeHtml(exercise.name)}</div>
+              <div class="strength-exercise-meta">Target ${escapeHtml(String(exercise.targetSets || exercise.sets))} x ${escapeHtml(String(exercise.targetReps || exercise.reps))}</div>
+              <div class="strength-exercise-meta">Last: ${escapeHtml(lastWeight || "--")} ${lastReps ? `for ${escapeHtml(lastReps)}` : ""}</div>
+              <div class="strength-exercise-meta">${escapeHtml(getExerciseProgressionSuggestion(exercise))}</div>
+            </div>
+          </div>
+          <div class="strength-sets">
+            ${(exercise.actualSets || []).map((set, setIndex) => `
+              <div class="strength-set-row">
+                <span class="strength-set-label">Set ${setIndex + 1}</span>
+                <input data-strength-exercise="${exerciseIndex}" data-strength-set="${setIndex}" data-strength-field="weight" type="text" inputmode="decimal" placeholder="wt" value="${escapeHtml(String(set.weight ?? ""))}">
+                <input data-strength-exercise="${exerciseIndex}" data-strength-set="${setIndex}" data-strength-field="reps" type="text" inputmode="decimal" placeholder="reps" value="${escapeHtml(String(set.reps ?? ""))}">
+                <button type="button" class="secondary-button strength-complete-set" data-strength-exercise="${exerciseIndex}" data-strength-set="${setIndex}">${set.completed ? "Done" : "Set"}</button>
+              </div>
+            `).join("")}
+          </div>
+        </article>
+      `;
+        })()}
+      `).join("")}
+    </div>
+    <div class="strength-footer">
+      <label class="quick-field">
+        <span>Duration (min)</span>
+        <input id="strength-duration" type="number" min="5" max="180" step="5" value="${session?.durationMinutes ?? state.strengthSettings.defaultWorkoutDuration}">
+      </label>
+      <label class="quick-field">
+        <span>Workout score</span>
+        <select id="strength-score">
+          <option value="">Auto</option>
+          ${[0, 1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${session?.workoutScoreOverride === value ? "selected" : ""}>${value}</option>`).join("")}
+        </select>
+      </label>
+      <label class="quick-field quick-notes">
+        <span>Workout note</span>
+        <input id="strength-note" type="text" maxlength="160" value="${escapeHtml(session?.note || "")}" placeholder="Strong session, bench felt better, left one rep in reserve">
+      </label>
+      <div class="strength-footer-actions">
+        <button id="save-strength-session" type="button">Save Workout</button>
+      </div>
+    </div>
+  `;
+
+  const startButton = document.getElementById("start-strength-session");
+  if (startButton) {
+    startButton.addEventListener("click", () => {
+      if (!state.meta.currentStrengthSession || state.meta.currentStrengthSession.date !== dateKey) {
+        state.meta.currentStrengthSession = createStrengthSession(dateKey);
+        saveState();
+      }
+      render();
+    });
+  }
+
+  for (const input of strengthCard.querySelectorAll("[data-strength-field]")) {
+    input.addEventListener("input", handleStrengthDraftChange);
+  }
+  for (const button of strengthCard.querySelectorAll(".strength-complete-set")) {
+    button.addEventListener("click", handleStrengthSetToggle);
+  }
+  const saveWorkoutButton = document.getElementById("save-strength-session");
+  if (saveWorkoutButton) {
+    saveWorkoutButton.addEventListener("click", saveStrengthSession);
+  }
+}
+
+function renderSignals(summary) {
+  signalsList.innerHTML = summary.signals.length
+    ? summary.signals.map((signal) => `<div class="signal-card">${escapeHtml(signal)}</div>`).join("")
+    : `<div class="empty-state">Signals will appear once the app has enough trend context.</div>`;
+}
+
+function renderScorecard(summary) {
+  const card = summary.scorecard;
+  scorecardCard.innerHTML = `
+    <div class="scorecard-grid">
+      <div class="scorecard-stat"><strong>${card.completedWorkouts}</strong><span>workouts completed / ${card.plannedWorkouts} planned</span></div>
+      <div class="scorecard-stat"><strong>${formatMaybe(card.averageEatingScore, 1)}</strong><span>avg eating score</span></div>
+      <div class="scorecard-stat"><strong>${card.inControlDays}</strong><span>1-2 days</span></div>
+      <div class="scorecard-stat"><strong>${card.offTrackDays}</strong><span>4-5 days</span></div>
+      <div class="scorecard-stat"><strong>${formatSigned(card.weightChange, 1)}</strong><span>weight change</span></div>
+      <div class="scorecard-stat"><strong>${formatSigned(card.bodyFatChange, 1)}</strong><span>body fat change</span></div>
+      <div class="scorecard-stat"><strong>${card.consistencyScore}</strong><span>consistency score</span></div>
+    </div>
+    <div class="scorecard-copy">
+      <p><strong>What went well:</strong> ${escapeHtml(card.wentWell)}</p>
+      <p><strong>What slipped:</strong> ${escapeHtml(card.slipped)}</p>
+      <p><strong>Next focus:</strong> ${escapeHtml(card.nextFocus)}</p>
+    </div>
+  `;
+}
+
+function renderProgress(summary) {
+  progressCard.innerHTML = `
+    <div class="progress-copy">
+      <p>${escapeHtml(summary.progress.workoutSummary)}</p>
+      <p>${escapeHtml(summary.progress.liftSummary)}</p>
+      <p>${escapeHtml(summary.progress.eatingSummary)}</p>
+      <p>${escapeHtml(summary.progress.weightSummary)}</p>
+    </div>
+  `;
+}
+
+function getEditableStrengthSession() {
+  return state.meta.currentStrengthSession ||
+    migrateStrengthSession(getStrengthSessionForDate(getSelectedDateKey()), state.strengthPlan) ||
+    createStrengthSession(getSelectedDateKey());
+}
+
+function handleStrengthDraftChange(event) {
+  const session = getEditableStrengthSession();
+  const exerciseIndex = Number(event.target.dataset.strengthExercise);
+  const setIndex = Number(event.target.dataset.strengthSet);
+  const field = event.target.dataset.strengthField;
+  session.exercises[exerciseIndex].actualSets[setIndex][field] = event.target.value;
+  state.meta.currentStrengthSession = session;
+}
+
+function handleStrengthSetToggle(event) {
+  const session = getEditableStrengthSession();
+  const exerciseIndex = Number(event.currentTarget.dataset.strengthExercise);
+  const setIndex = Number(event.currentTarget.dataset.strengthSet);
+  const target = session.exercises[exerciseIndex].actualSets[setIndex];
+  target.completed = !target.completed;
+  state.meta.currentStrengthSession = session;
+  render();
+}
+
+function getAutoWorkoutScore(session) {
+  const completedSets = session.exercises.flatMap((exercise) => exercise.actualSets).filter((set) => set.completed).length;
+  const totalSets = session.exercises.reduce((sum, exercise) => sum + exercise.actualSets.length, 0);
+  const ratio = totalSets ? completedSets / totalSets : 0;
+  if (!completedSets) {
+    return 0;
+  }
+  if (ratio < 0.25) {
+    return 1;
+  }
+  if (ratio < 0.75) {
+    return 2;
+  }
+  const progressed = session.exercises.some((exercise) => exercise.progressed);
+  return progressed ? 4 : 3;
+}
+
+function saveStrengthSession() {
+  const session = getEditableStrengthSession();
+  session.durationMinutes = clampNumber(document.getElementById("strength-duration")?.value, 5, 180, state.strengthSettings.defaultWorkoutDuration);
+  session.note = (document.getElementById("strength-note")?.value || "").trim().slice(0, 160);
+  const overrideValue = document.getElementById("strength-score")?.value;
+  session.workoutScoreOverride = overrideValue === "" ? null : Number(overrideValue);
+  session.exercises = session.exercises.map((exercise) => {
+    const last = getLastExercisePerformance(exercise.name);
+    const lastWeight = Number(last?.exercise?.actualSets?.find((set) => set.weight)?.weight || 0);
+    const currentWeight = Number(exercise.actualSets.find((set) => set.weight)?.weight || 0);
+    const targetReps = Number(exercise.targetReps || 0);
+    const allSetsHit = exercise.actualSets.every((set) => Number(set.reps || 0) >= targetReps);
+    return {
+      ...exercise,
+      completed: exercise.actualSets.every((set) => set.completed || (set.weight || set.reps)),
+      progressed: currentWeight > lastWeight || allSetsHit,
+      pr: currentWeight > lastWeight,
+    };
+  });
+  const completedSets = session.exercises.flatMap((exercise) => exercise.actualSets).filter((set) => set.completed || set.weight || set.reps).length;
+  const totalSets = session.exercises.reduce((sum, exercise) => sum + exercise.actualSets.length, 0);
+  session.completed = totalSets ? completedSets / totalSets >= 0.75 : false;
+  session.workoutScore = session.workoutScoreOverride ?? getAutoWorkoutScore(session);
+
+  state.strengthHistory = [
+    ...state.strengthHistory.filter((item) => item.date !== session.date),
+    session,
+  ].sort((a, b) => a.date.localeCompare(b.date));
+  state.meta.currentStrengthSession = null;
+  saveState();
+  render();
+  setStatus(`Saved Strength Quest session for ${formatDisplayDate(session.date)}.`);
+}
+
+function buildSignals(loggedEntries, weekly, strengthSummary) {
+  const signals = [];
+  if (weekly.latestWeeklyWeightAverage != null && weekly.priorWeightAverage != null) {
+    signals.push(
+      weekly.latestWeeklyWeightAverage <= weekly.priorWeightAverage
+        ? "Weight trend is still moving down over the last 7 days."
+        : "Weight trend has flattened recently."
+    );
+  }
+  const workoutsThisWeek = strengthSummary.progress.workoutsThisWeek.length;
+  signals.push(`You completed ${workoutsThisWeek} of ${state.strengthSettings.daysPerWeek} strength workouts this week.`);
+  const recentFood = loggedEntries.slice(-14).filter((day) => day.mode === "full");
+  const priorFood = loggedEntries.slice(-28, -14).filter((day) => day.mode === "full");
+  if (recentFood.length >= 4 && priorFood.length >= 4) {
+    const recentAverage = average(
+      recentFood.map((day) => average(day.answeredMeals.map((slot) => day.food[slot]).filter((value) => value != null)))
+    );
+    const priorAverage = average(
+      priorFood.map((day) => average(day.answeredMeals.map((slot) => day.food[slot]).filter((value) => value != null)))
+    );
+    if (recentAverage < priorAverage) {
+      signals.push("Food control improved compared to the prior block.");
+    }
+  }
+  const recentWarningDays = loggedEntries.slice(-5).filter((day) => (day.food?.dinner ?? 0) >= 3 || (day.food?.other ?? 0) >= 3).length;
+  if (recentWarningDays >= 3) {
+    signals.push("You've had three warning/off-track eating days in the last 5 days.");
+  }
+  if (workoutsThisWeek >= 2) {
+    signals.push("Strength consistency is improving.");
+  }
+  return signals.slice(0, 5);
+}
+
+function buildWeeklyScorecard(loggedEntries, weekly, strengthSummary) {
+  const recentWeek = loggedEntries.slice(-7);
+  const recentBody = recentWeek.filter((day) => day.bodyFat != null);
+  const recentWeights = recentWeek.filter((day) => day.weight != null);
+  const eatingDays = recentWeek.filter((day) => day.mode === "full" && day.answeredMeals.length);
+  const eatingAverages = eatingDays.map((day) => average(day.answeredMeals.map((slot) => day.food[slot]).filter((value) => value != null)));
+  const inControlDays = eatingAverages.filter((value) => value <= 2).length;
+  const offTrackDays = eatingAverages.filter((value) => value >= 4).length;
+  const consistencyScore = Math.round(
+    (Math.min(1, strengthSummary.progress.workoutsThisWeek.length / Math.max(1, state.strengthSettings.daysPerWeek)) * 40) +
+    (Math.min(1, inControlDays / Math.max(1, eatingAverages.length || 1)) * 35) +
+    (Math.min(1, (weekly.avgStepsLogged || 0) / Math.max(1, state.settings.stepGoal)) * 25)
+  );
+
+  return {
+    completedWorkouts: strengthSummary.progress.workoutsThisWeek.length,
+    plannedWorkouts: state.strengthSettings.daysPerWeek,
+    averageEatingScore: eatingAverages.length ? average(eatingAverages) : null,
+    inControlDays,
+    offTrackDays,
+    weightChange: recentWeights.length >= 2 ? recentWeights[recentWeights.length - 1].weight - recentWeights[0].weight : null,
+    bodyFatChange: recentBody.length >= 2 ? recentBody[recentBody.length - 1].bodyFat - recentBody[0].bodyFat : null,
+    consistencyScore,
+    wentWell: strengthSummary.progress.workoutsThisWeek.length >= 3 ? "You completed all planned training." : inControlDays >= 4 ? "Food control held together on most logged days." : "You kept showing up and logging honestly.",
+    slipped: offTrackDays >= 2 ? "Late-day drift showed up more than once." : weekly.avgStepsLogged != null && weekly.avgStepsLogged < state.settings.stepGoal * 0.75 ? "Movement volume fell below target." : "Nothing major slipped, but there is still room to tighten execution.",
+    nextFocus: offTrackDays >= 2 ? "Reduce late-day drift." : strengthSummary.progress.workoutsThisWeek.length < state.strengthSettings.daysPerWeek ? "Finish all scheduled strength sessions." : "Protect consistency and avoid unnecessary extras.",
+  };
+}
+
+function buildProgressSummary(loggedEntries, weekly, strengthSummary) {
+  const liftSummaryText = strengthSummary.progress.liftProgress.length
+    ? strengthSummary.progress.liftProgress
+      .slice(0, 3)
+      .map((lift) => `${lift.name} ${lift.firstWeight || 0} lb to ${lift.latestWeight || 0} lb`)
+      .join(" | ")
+    : null;
+  return {
+    workoutSummary: `You logged ${strengthSummary.progress.workoutsThisMonth.length} strength workouts in the last 30 days.`,
+    liftSummary: liftSummaryText ? `Lift progress: ${liftSummaryText}.` : "Log a few workouts to start seeing lift progress milestones.",
+    eatingSummary: `You stayed in control on ${buildWeeklyScorecard(loggedEntries, weekly, strengthSummary).inControlDays} of the last 7 logged days.`,
+    weightSummary: weekly.latestWeeklyWeightAverage != null && weekly.priorWeightAverage != null && weekly.latestWeeklyWeightAverage <= weekly.priorWeightAverage
+      ? "Trend is still down despite normal day-to-day scale noise."
+      : "Daily scale is noisy. Use the rolling average to judge direction.",
+  };
+}
+
+function downloadTextFile(filename, content, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function toCsv(rows) {
+  return rows.map((row) => row.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
+}
+
+function exportCsv(type) {
+  const scored = computeSummary().timelineLogged;
+  let rows = [];
+  let filename = "";
+
+  if (type === "food") {
+    filename = `health-quest-food-${getTodayKey()}.csv`;
+    rows = [["date", "morning", "lunch", "afternoon", "dinner", "other", "food_note"]].concat(
+      scored.map((day) => [day.date, day.food.morning ?? "", day.food.lunch ?? "", day.food.afternoon ?? "", day.food.dinner ?? "", day.food.other ?? "", day.foodNote || ""])
+    );
+  } else if (type === "body") {
+    filename = `health-quest-body-${getTodayKey()}.csv`;
+    rows = [["date", "weight", "body_fat", "steps", "exercise_minutes"]].concat(
+      scored.map((day) => [day.date, day.weight ?? "", day.bodyFat ?? "", day.steps ?? 0, day.exerciseMinutes ?? 0])
+    );
+  } else if (type === "strength") {
+    filename = `health-quest-strength-${getTodayKey()}.csv`;
+    rows = [["date", "workout", "completed", "duration_minutes", "workout_score", "exercise", "set", "weight", "reps"]].concat(
+      state.strengthHistory.flatMap((session) => session.exercises.flatMap((exercise) => exercise.actualSets.map((set, index) => [
+        session.date,
+        session.workoutName,
+        session.completed,
+        session.durationMinutes,
+        session.workoutScore,
+        exercise.name,
+        index + 1,
+        set.weight ?? "",
+        set.reps ?? "",
+      ])))
+    );
+  } else {
+    filename = `health-quest-summary-${getTodayKey()}.csv`;
+    rows = [["date", "score", "steps", "exercise", "food_points", "habit_points", "body_points", "day_type"]].concat(
+      scored.map((day) => [day.date, day.totalScore, day.steps, day.exerciseMinutes, day.foodPoints, day.habitPoints, day.bodyMetricPoints, day.dayType])
+    );
+  }
+
+  downloadTextFile(filename, toCsv(rows), "text/csv;charset=utf-8");
+  setStatus(`Exported ${type.toUpperCase()} CSV.`);
 }
 
 function renderCharts(summary) {
@@ -1644,6 +2420,7 @@ function renderRecentDays(days) {
           <span class="metric-pill">${day.bodyFat != null ? `${day.bodyFat}% fat` : "No body fat"}</span>
         </div>
         ${day.notes ? `<div class="day-notes">${escapeHtml(day.notes)}</div>` : ""}
+        ${day.foodNote ? `<div class="day-notes">Food note: ${escapeHtml(day.foodNote)}</div>` : ""}
       </article>
     `)
     .join("");

@@ -7,8 +7,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Health Quest</title>
-  <link rel="manifest" href="manifest.json?v=4.1.0">
-  <link rel="stylesheet" href="styles.css?v=4.1.0">
+  <link rel="manifest" href="manifest.json?v=4.2.0">
+  <link rel="stylesheet" href="styles.css?v=4.2.0">
 </head>
 <body>
   <div class="app-shell">
@@ -76,6 +76,10 @@
         </div>
         <div class="data-actions">
           <button id="export-json" type="button" class="secondary-button">Export JSON</button>
+          <button id="export-food-csv" type="button" class="secondary-button">Food CSV</button>
+          <button id="export-body-csv" type="button" class="secondary-button">Body CSV</button>
+          <button id="export-strength-csv" type="button" class="secondary-button">Strength CSV</button>
+          <button id="export-summary-csv" type="button" class="secondary-button">Summary CSV</button>
           <label class="secondary-button file-button">
             Import JSON
             <input id="import-json" type="file" accept="application/json">
@@ -129,24 +133,47 @@
 
         <div id="food-section" class="food-section">
           <div class="food-legend">
-            <span class="food-key"><strong>0</strong> ate nothing / n/a</span>
-            <span class="food-key"><strong>1</strong> on track</span>
-            <span class="food-key"><strong>2</strong> either ate good food with larger portions OR ate worse food but maintained portion control</span>
-            <span class="food-key"><strong>3</strong> worse food with little portion control, but remained mindful</span>
-            <span class="food-key"><strong>4</strong> ate until full</span>
-            <span class="food-key"><strong>5</strong> stuffed myself</span>
+            <span class="food-key"><strong>0</strong> N/A — meal not eaten, fasting, or not applicable</span>
+            <span class="food-key"><strong>1</strong> On track — controlled and intentional</span>
+            <span class="food-key"><strong>2</strong> Slight drift — still in control overall</span>
+            <span class="food-key"><strong>3</strong> Warning — weaker choices or lower control, still mindful</span>
+            <span class="food-key"><strong>4</strong> Overate — ate until full / beyond what was needed</span>
+            <span class="food-key"><strong>5</strong> Stuffed — fully off track, clear loss of control</span>
+            <span class="food-key">This scale is about control, awareness, and alignment with intent, not just healthy vs unhealthy food.</span>
           </div>
           <div id="food-log" class="food-log"></div>
         </div>
       </section>
 
+      <section class="panel strength-panel">
+        <div class="panel-header">
+          <h2>Strength Quest</h2>
+        </div>
+        <div id="strength-card" class="strength-card"></div>
+      </section>
+
       <section class="panel summary-panel">
         <div class="panel-header">
-          <h2>Weekly Trends</h2>
+          <h2>Signals & Trends</h2>
         </div>
         <div id="summary-stats" class="stats-grid"></div>
+        <div id="signals-list" class="signals-list"></div>
         <div id="guardrail-list" class="guardrail-list"></div>
         <div id="chart-wrap" class="chart-wrap"></div>
+      </section>
+
+      <section class="panel scorecard-panel">
+        <div class="panel-header">
+          <h2>Weekly Scorecard</h2>
+        </div>
+        <div id="scorecard-card" class="scorecard-card"></div>
+      </section>
+
+      <section class="panel progress-panel">
+        <div class="panel-header">
+          <h2>Progress</h2>
+        </div>
+        <div id="progress-card" class="progress-card"></div>
       </section>
 
       <section class="panel rewards-panel">
@@ -197,6 +224,6 @@
     </footer>
   </div>
 
-  <script src="app.js?v=4.1.0"></script>
+  <script src="app.js?v=4.2.0"></script>
 </body>
 </html>

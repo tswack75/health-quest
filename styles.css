@@ -119,6 +119,12 @@ button,
   text-align: center;
 }
 
+.mini-action {
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  margin-left: 6px;
+}
+
 .secondary-button {
   background: rgba(13, 59, 102, 0.08);
   color: var(--brand);
@@ -160,7 +166,10 @@ button,
 
 .settings-panel,
 .summary-panel,
-.activity-panel {
+.activity-panel,
+.strength-panel,
+.scorecard-panel,
+.progress-panel {
   grid-column: span 6;
 }
 
@@ -171,6 +180,10 @@ button,
 .rewards-panel,
 .story-panel {
   grid-column: span 5;
+}
+
+.strength-panel {
+  grid-column: 1 / -1;
 }
 
 .panel-header,
@@ -370,7 +383,9 @@ button,
 .update-banner,
 .boss-fight-card,
 .xp-progress-card,
-.chapter-banner {
+.chapter-banner,
+.strength-inline-card,
+.today-focus {
   margin-bottom: 12px;
   padding: 12px 14px;
   border-radius: 14px;
@@ -419,6 +434,39 @@ button,
 .xp-line {
   color: var(--muted);
   font-size: 0.92rem;
+}
+
+.today-focus-label,
+.strength-kicker {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--brand);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.today-focus-copy {
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.today-actions-list,
+.strength-inline-meta,
+.signals-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.today-action-pill,
+.signal-card {
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(13, 59, 102, 0.06);
+  color: var(--brand);
+  font-size: 0.86rem;
 }
 
 .xp-progress {
@@ -644,6 +692,109 @@ button,
   overflow-wrap: anywhere;
 }
 
+.strength-card,
+.scorecard-card,
+.progress-card {
+  display: grid;
+  gap: 14px;
+}
+
+.strength-hero,
+.strength-exercise,
+.scorecard-stat,
+.progress-copy {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+}
+
+.strength-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.strength-actions,
+.strength-footer-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.strength-list,
+.strength-footer,
+.scorecard-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.scorecard-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.strength-exercise-top {
+  margin-bottom: 10px;
+}
+
+.strength-exercise-name {
+  font-weight: 800;
+}
+
+.strength-exercise-meta {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.35;
+  margin-top: 4px;
+}
+
+.strength-sets {
+  display: grid;
+  gap: 8px;
+}
+
+.strength-set-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.strength-set-row input,
+.strength-footer input,
+.strength-footer select {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.strength-set-label {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.scorecard-stat {
+  display: grid;
+  gap: 6px;
+}
+
+.scorecard-stat strong {
+  font-size: 1.3rem;
+}
+
+.scorecard-stat span,
+.scorecard-copy p,
+.progress-copy p,
+.strength-inline-meta span {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -800,6 +951,8 @@ body.maintenance-mode .today-breakdown {
   .settings-panel,
   .summary-panel,
   .activity-panel,
+  .scorecard-panel,
+  .progress-panel,
   .log-panel,
   .rewards-panel,
   .story-panel {
@@ -834,7 +987,13 @@ body.maintenance-mode .today-breakdown {
   .today-stats,
   .today-habits,
   .quick-fields,
+  .scorecard-grid,
   .food-row {
+    grid-template-columns: 1fr;
+  }
+
+  .strength-hero,
+  .strength-set-row {
     grid-template-columns: 1fr;
   }
 
