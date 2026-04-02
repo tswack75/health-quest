@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.4.1";
+const APP_VERSION = "v4.5.4";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const mealSlots = ["morning", "lunch", "afternoon", "dinner", "other"];
@@ -1666,6 +1666,12 @@ function openExerciseHelp(helpSlug, alternateHelpSlug = null) {
     </div>
     <p class="help-description">${escapeHtml(primary.description)}</p>
     <div class="help-section">
+      <div class="help-section-title">Quick Cues</div>
+      <div class="cue-chip-list">
+        ${(primary.quickCues || []).map((cue) => `<span class="cue-chip">${escapeHtml(cue)}</span>`).join("")}
+      </div>
+    </div>
+    <div class="help-section">
       <div class="help-section-title">Form Tips</div>
       <ul>
         ${primary.formTips.map((tip) => `<li>${escapeHtml(tip)}</li>`).join("")}
@@ -1701,22 +1707,44 @@ function closeExerciseHelp() {
 }
 
 function renderExerciseDemoMedia(entry) {
-  const url = String(entry?.demoUrl || "");
+  const videoUrl = String(entry?.demoAsset || "");
+  const webmUrl = String(entry?.fallbackVideoAsset || "");
+  const fallbackUrl = String(entry?.fallbackDemoAsset || "");
   const alt = escapeHtml(entry?.demoAlt || entry?.name || "Exercise demo");
+  const fallbackMessage = escapeHtml(entry?.fallbackMessage || "Demo coming soon.");
 
-  if (url.endsWith(".svg")) {
-    return `<object data="${escapeHtml(url)}" type="image/svg+xml" aria-label="${alt}"></object>`;
-  }
-
-  if (url.endsWith(".mp4") || url.endsWith(".webm")) {
+  if (videoUrl.endsWith(".mp4") || webmUrl.endsWith(".webm")) {
+    const fallbackScript = `this.onerror=null;this.classList.add('is-hidden');const shell=this.closest('.help-video-shell');if(shell){shell.classList.add('is-fallback');const note=shell.querySelector('.help-fallback-note');const fallback=shell.querySelector('.help-media-fallback');const badge=shell.querySelector('.help-source-badge');if(note){note.classList.remove('is-hidden');}if(fallback){fallback.classList.remove('is-hidden');}if(badge){badge.textContent='SVG fallback';}}`;
+    const loadedScript = `const shell=this.closest('.help-video-shell');if(shell){const badge=shell.querySelector('.help-source-badge');if(badge){const src=(this.currentSrc||'').toLowerCase();badge.textContent=src.endsWith('.webm')?'WEBM':'MP4';}}`;
     return `
-      <video autoplay muted loop playsinline preload="none" aria-label="${alt}">
-        <source src="${escapeHtml(url)}">
-      </video>
+      <div class="help-video-shell">
+        <div class="help-source-badge" aria-label="Demo source">Video</div>
+        <video autoplay muted loop playsinline preload="none" aria-label="${alt}" onerror="${fallbackScript}" onloadeddata="${loadedScript}">
+          ${videoUrl ? `<source src="${escapeHtml(videoUrl)}" type="video/mp4">` : ""}
+          ${webmUrl ? `<source src="${escapeHtml(webmUrl)}" type="video/webm">` : ""}
+        </video>
+        <div class="help-fallback-note is-hidden">${fallbackMessage}</div>
+        ${fallbackUrl ? `<object data="${escapeHtml(fallbackUrl)}" type="image/svg+xml" aria-label="${alt}" class="help-media-fallback is-hidden"></object>` : ""}
+      </div>
     `;
   }
 
-  return `<img src="${escapeHtml(url)}" alt="${alt}" loading="lazy">`;
+  if (fallbackUrl.endsWith(".svg")) {
+    return `
+      <div class="help-video-shell is-fallback">
+        <div class="help-source-badge" aria-label="Demo source">SVG fallback</div>
+        <object data="${escapeHtml(fallbackUrl)}" type="image/svg+xml" aria-label="${alt}"></object>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="help-video-shell is-fallback">
+      <div class="help-source-badge" aria-label="Demo source">No local media</div>
+      <div class="help-fallback-note">${fallbackMessage}</div>
+      ${fallbackUrl ? `<object data="${escapeHtml(fallbackUrl)}" type="image/svg+xml" aria-label="${alt}"></object>` : ""}
+    </div>
+  `;
 }
 
 function getTodayBreakdownNote(day) {
@@ -2046,6 +2074,10 @@ function renderStrengthCard(summary) {
             <div>
               <div class="strength-exercise-name">${escapeHtml(exercise.name)}</div>
               <div class="strength-exercise-meta">${escapeHtml(helpEntry?.description || "Simple full-body strength work.")}</div>
+              ${helpEntry?.primaryCue ? `<div class="strength-primary-cue">${escapeHtml(helpEntry.primaryCue)}</div>` : ""}
+              <div class="strength-cues">
+                ${(helpEntry?.quickCues || []).slice(0, 3).map((cue) => `<span class="cue-chip subtle">${escapeHtml(cue)}</span>`).join("")}
+              </div>
               <div class="strength-help-actions">
                 <button type="button" class="secondary-button exercise-help-trigger" data-help-slug="${escapeHtml(exercise.helpSlug || exercise.name)}" ${exercise.alternateHelpSlug ? `data-help-alt="${escapeHtml(exercise.alternateHelpSlug)}"` : ""}>How to Do This</button>
                 ${alternateEntry ? `<span class="strength-exercise-meta">Alternative available: ${escapeHtml(alternateEntry.name)}</span>` : ""}

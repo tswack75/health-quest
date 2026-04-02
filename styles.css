@@ -216,10 +216,74 @@ button,
   background: rgba(13, 59, 102, 0.04);
 }
 
+.help-video-shell {
+  position: relative;
+}
+
+.help-source-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(13, 59, 102, 0.82);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.help-video-shell.is-fallback .help-source-badge {
+  background: rgba(92, 107, 115, 0.88);
+}
+
+.help-media video,
+.help-media .help-media-fallback {
+  aspect-ratio: 3 / 2;
+  background: rgba(13, 59, 102, 0.04);
+}
+
+.help-media .help-media-fallback.is-hidden,
+.help-media video.is-hidden {
+  display: none;
+}
+
 .help-description,
 .help-section li {
   color: var(--muted);
   line-height: 1.45;
+}
+
+.help-fallback-note {
+  padding: 10px 12px;
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.cue-chip-list,
+.strength-cues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cue-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(13, 59, 102, 0.08);
+  color: var(--brand);
+  font-size: 0.84rem;
+  line-height: 1;
+}
+
+.cue-chip.subtle {
+  background: rgba(13, 59, 102, 0.05);
+  color: var(--muted);
 }
 
 .help-section {
@@ -863,6 +927,18 @@ button,
   font-size: 0.88rem;
   line-height: 1.35;
   margin-top: 4px;
+}
+
+.strength-primary-cue {
+  margin-top: 8px;
+  color: var(--brand);
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.strength-cues {
+  margin: 10px 0 8px;
 }
 
 .strength-help-actions {
