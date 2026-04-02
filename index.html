@@ -7,8 +7,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Health Quest</title>
-  <link rel="manifest" href="manifest.json?v=4.2.0">
-  <link rel="stylesheet" href="styles.css?v=4.2.0">
+  <link rel="manifest" href="manifest.json?v=4.3.0">
+  <link rel="stylesheet" href="styles.css?v=4.3.0">
 </head>
 <body>
   <div class="app-shell">
@@ -27,6 +27,20 @@
     <div id="update-banner" class="update-banner is-hidden">
       <span id="update-banner-text">A newer build is ready.</span>
       <button id="refresh-app" type="button">Refresh App</button>
+    </div>
+
+    <div id="exercise-help-sheet" class="help-sheet is-hidden" aria-hidden="true">
+      <div class="help-sheet-backdrop" data-help-close="true"></div>
+      <div class="help-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="exercise-help-title">
+        <div class="help-sheet-header">
+          <div>
+            <div class="strength-kicker">Exercise Help</div>
+            <h3 id="exercise-help-title">Exercise</h3>
+          </div>
+          <button id="close-exercise-help" type="button" class="secondary-button">Close</button>
+        </div>
+        <div id="exercise-help-content" class="help-sheet-content"></div>
+      </div>
     </div>
 
     <nav class="tab-bar" aria-label="Primary navigation">
@@ -232,6 +246,7 @@
     </footer>
   </div>
 
-  <script src="app.js?v=4.2.0"></script>
+  <script src="exercise-help.js?v=4.3.0"></script>
+  <script src="app.js?v=4.3.0"></script>
 </body>
 </html>

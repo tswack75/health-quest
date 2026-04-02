@@ -1,11 +1,19 @@
-const APP_VERSION = "4.2.0";
+const APP_VERSION = "4.3.0";
 const CACHE_NAME = `health-quest-${APP_VERSION}`;
 const APP_FILES = [
   "./",
-  "./index.html?v=4.2.0",
-  "./styles.css?v=4.2.0",
-  "./app.js?v=4.2.0",
-  "./manifest.json?v=4.2.0",
+  "./index.html?v=4.3.0",
+  "./styles.css?v=4.3.0",
+  "./exercise-help.js?v=4.3.0",
+  "./app.js?v=4.3.0",
+  "./manifest.json?v=4.3.0",
+  "./assets/exercises/goblet-squat.svg",
+  "./assets/exercises/dumbbell-bench-press.svg",
+  "./assets/exercises/incline-push-up.svg",
+  "./assets/exercises/one-arm-dumbbell-row.svg",
+  "./assets/exercises/romanian-deadlift.svg",
+  "./assets/exercises/plank.svg",
+  "./assets/exercises/dead-bug.svg",
 ];
 
 self.addEventListener("install", (event) => {

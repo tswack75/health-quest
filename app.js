@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.2.0";
+const APP_VERSION = "v4.3.0";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const mealSlots = ["morning", "lunch", "afternoon", "dinner", "other"];
@@ -110,61 +110,38 @@ const defaultStrengthPlan = {
           sets: 3,
           reps: 8,
           repRange: [8, 10],
-          description: "Squat pattern for legs and trunk with a dumbbell held at chest height.",
-          tips: [
-            "Brace before each rep and keep your ribs stacked over your hips.",
-            "Sit between your feet, not onto your toes.",
-            "Keep the dumbbell close and drive up through mid-foot."
-          ],
+          helpSlug: "goblet-squat",
         },
         {
-          name: "Dumbbell Bench Press / Incline Push-Ups",
+          name: "Dumbbell Bench Press",
           sets: 3,
           reps: 8,
           repRange: [8, 10],
-          description: "Horizontal press for chest, shoulders, and triceps using dumbbells or bodyweight.",
-          tips: [
-            "Keep shoulders packed down instead of shrugging.",
-            "Lower under control and press without bouncing.",
-            "For incline push-ups, keep a straight line from head to heel."
-          ],
+          helpSlug: "dumbbell-bench-press",
+          alternateHelpSlug: "incline-push-ups",
         },
         {
           name: "One-Arm Dumbbell Row",
           sets: 3,
           reps: 8,
           repRange: [8, 10],
-          description: "Single-arm pulling work for upper back and lats.",
-          tips: [
-            "Brace your torso so the row comes from the arm, not body swing.",
-            "Pull elbow toward hip, not straight up to shoulder.",
-            "Pause briefly at the top and lower with control."
-          ],
+          helpSlug: "one-arm-dumbbell-row",
         },
         {
           name: "Romanian Deadlift",
           sets: 3,
           reps: 8,
           repRange: [8, 10],
-          description: "Hip hinge for glutes and hamstrings with minimal knee bend.",
-          tips: [
-            "Push hips back and keep the weights close to your legs.",
-            "Stop when your back wants to round.",
-            "Stand tall by squeezing glutes, not leaning back."
-          ],
+          helpSlug: "romanian-deadlift",
         },
         {
-          name: "Plank / Dead Bug",
+          name: "Plank",
           sets: 3,
           reps: "30 sec",
           repRange: [30, 45],
           optional: true,
-          description: "Optional trunk stability work to reinforce control and bracing.",
-          tips: [
-            "Keep your ribcage down and pelvis quiet.",
-            "Breathe normally instead of holding tension in your neck.",
-            "Choose the variation you can control cleanly."
-          ],
+          helpSlug: "plank",
+          alternateHelpSlug: "dead-bug",
         },
       ],
     },
@@ -253,6 +230,10 @@ const todayCard = document.getElementById("today-card");
 const updateBanner = document.getElementById("update-banner");
 const updateBannerText = document.getElementById("update-banner-text");
 const refreshAppButton = document.getElementById("refresh-app");
+const exerciseHelpSheet = document.getElementById("exercise-help-sheet");
+const exerciseHelpContent = document.getElementById("exercise-help-content");
+const exerciseHelpTitle = document.getElementById("exercise-help-title");
+const closeExerciseHelpButton = document.getElementById("close-exercise-help");
 const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
 const viewSections = Array.from(document.querySelectorAll("[data-view]"));
 const summaryStats = document.getElementById("summary-stats");
@@ -299,6 +280,12 @@ function initialize() {
   exportSummaryCsvButton.addEventListener("click", () => exportCsv("summary"));
   importJsonInput.addEventListener("change", importJson);
   refreshAppButton.addEventListener("click", forceRefreshApp);
+  closeExerciseHelpButton.addEventListener("click", closeExerciseHelp);
+  exerciseHelpSheet.addEventListener("click", (event) => {
+    if (event.target instanceof HTMLElement && event.target.dataset.helpClose === "true") {
+      closeExerciseHelp();
+    }
+  });
   for (const button of tabButtons) {
     button.addEventListener("click", () => setActiveTab(button.dataset.tab));
   }
@@ -544,6 +531,10 @@ function migrateStrengthSession(session, strengthPlan = defaultStrengthPlan) {
 
   const workout = strengthPlan.workouts.find((item) => item.id === session.workoutId) || strengthPlan.workouts[0];
   const exerciseMap = new Map((session.exercises || []).map((exercise) => [exercise.name, exercise]));
+  const exerciseAliases = {
+    "Dumbbell Bench Press": "Dumbbell Bench Press / Incline Push-Ups",
+    "Plank": "Plank / Dead Bug",
+  };
 
   return {
     id: session.id || createId(),
@@ -556,11 +547,11 @@ function migrateStrengthSession(session, strengthPlan = defaultStrengthPlan) {
     workoutScoreOverride: session.workoutScoreOverride == null ? null : Number(session.workoutScoreOverride),
     note: typeof session.note === "string" ? session.note.slice(0, 160) : "",
     exercises: workout.exercises.map((exercise) => {
-      const prior = exerciseMap.get(exercise.name) || {};
+      const prior = exerciseMap.get(exercise.name) || exerciseMap.get(exerciseAliases[exercise.name]) || {};
       return {
         name: exercise.name,
-        description: exercise.description || prior.description || "",
-        tips: exercise.tips || prior.tips || [],
+        helpSlug: exercise.helpSlug || prior.helpSlug || slugifyExerciseName(exercise.name),
+        alternateHelpSlug: exercise.alternateHelpSlug || prior.alternateHelpSlug || null,
         targetSets: Number(prior.targetSets || exercise.sets) || exercise.sets,
         targetReps: prior.targetReps ?? exercise.reps,
         actualSets: Array.isArray(prior.actualSets) ? prior.actualSets.map((set, index) => ({
@@ -1400,6 +1391,24 @@ function getWorkoutPlan() {
   return state.strengthPlan?.workouts?.[0] || defaultStrengthPlan.workouts[0];
 }
 
+function slugifyExerciseName(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replaceAll("&", "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function getExerciseHelpEntry(slugOrName) {
+  const library = window.EXERCISE_HELP_LIBRARY || {};
+  const aliases = {
+    "dumbbell-bench-press-incline-push-ups": "dumbbell-bench-press",
+    "plank-dead-bug": "plank",
+  };
+  const normalized = slugifyExerciseName(slugOrName);
+  return library[slugOrName] || library[aliases[normalized] || normalized] || null;
+}
+
 function getWeekdayCode(dateKey) {
   return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(`${dateKey}T12:00:00`).getDay()];
 }
@@ -1483,6 +1492,8 @@ function createStrengthSession(dateKey) {
       }));
       return {
         name: exercise.name,
+        helpSlug: exercise.helpSlug,
+        alternateHelpSlug: exercise.alternateHelpSlug || null,
         targetSets: exercise.sets,
         targetReps: exercise.reps,
         actualSets,
@@ -1602,6 +1613,55 @@ function getStrengthStoryHook(summary) {
     return "The forge is lit. Strength work is due today.";
   }
   return "You held the line this week.";
+}
+
+function openExerciseHelp(helpSlug, alternateHelpSlug = null) {
+  const primary = getExerciseHelpEntry(helpSlug);
+  const alternate = alternateHelpSlug ? getExerciseHelpEntry(alternateHelpSlug) : null;
+  if (!primary) {
+    setStatus("Exercise help is not ready for that movement yet.");
+    return;
+  }
+
+  exerciseHelpTitle.textContent = primary.name;
+  exerciseHelpContent.innerHTML = `
+    <div class="help-media">
+      <img src="${escapeHtml(primary.demoUrl)}" alt="${escapeHtml(primary.demoAlt)}" loading="lazy">
+    </div>
+    <p class="help-description">${escapeHtml(primary.description)}</p>
+    <div class="help-section">
+      <div class="help-section-title">Form Tips</div>
+      <ul>
+        ${primary.formTips.map((tip) => `<li>${escapeHtml(tip)}</li>`).join("")}
+      </ul>
+    </div>
+    <div class="help-section">
+      <div class="help-section-title">Common Mistakes</div>
+      <ul>
+        ${primary.commonMistakes.map((tip) => `<li>${escapeHtml(tip)}</li>`).join("")}
+      </ul>
+    </div>
+    ${alternate ? `
+      <div class="help-section alternate-help">
+        <div class="help-section-title">Alternative Option</div>
+        <p class="help-description">${escapeHtml(alternate.name)} is a valid substitute on days when you want a bodyweight press.</p>
+        <button id="swap-help-entry" type="button" class="secondary-button">Show ${escapeHtml(alternate.name)}</button>
+      </div>
+    ` : ""}
+  `;
+
+  const swapButton = document.getElementById("swap-help-entry");
+  if (swapButton && alternateHelpSlug) {
+    swapButton.addEventListener("click", () => openExerciseHelp(alternateHelpSlug, helpSlug));
+  }
+
+  exerciseHelpSheet.classList.remove("is-hidden");
+  exerciseHelpSheet.setAttribute("aria-hidden", "false");
+}
+
+function closeExerciseHelp() {
+  exerciseHelpSheet.classList.add("is-hidden");
+  exerciseHelpSheet.setAttribute("aria-hidden", "true");
 }
 
 function getTodayBreakdownNote(day) {
@@ -1907,25 +1967,25 @@ function renderStrengthCard(summary) {
     </div>
     <div class="strength-list">
       ${exercises.map((exercise, exerciseIndex) => `
-        ${(() => {
-          const last = getLastExercisePerformance(exercise.name);
-          const lastWeight = last?.exercise?.actualSets?.find((set) => set.weight)?.weight || "";
-          const lastReps = last?.exercise?.actualSets?.map((set) => set.reps).filter(Boolean).join("/") || "";
-          return `
+          ${(() => {
+            const last = getLastExercisePerformance(exercise.name);
+            const lastWeight = last?.exercise?.actualSets?.find((set) => set.weight)?.weight || "";
+            const lastReps = last?.exercise?.actualSets?.map((set) => set.reps).filter(Boolean).join("/") || "";
+            const helpEntry = getExerciseHelpEntry(exercise.helpSlug || exercise.name);
+            const alternateEntry = exercise.alternateHelpSlug ? getExerciseHelpEntry(exercise.alternateHelpSlug) : null;
+            return `
         <article class="strength-exercise">
           <div class="strength-exercise-top">
             <div>
               <div class="strength-exercise-name">${escapeHtml(exercise.name)}</div>
-              <div class="strength-exercise-meta">${escapeHtml(exercise.description || "Simple full-body strength work.")}</div>
+              <div class="strength-exercise-meta">${escapeHtml(helpEntry?.description || "Simple full-body strength work.")}</div>
+              <div class="strength-help-actions">
+                <button type="button" class="secondary-button exercise-help-trigger" data-help-slug="${escapeHtml(exercise.helpSlug || exercise.name)}" ${exercise.alternateHelpSlug ? `data-help-alt="${escapeHtml(exercise.alternateHelpSlug)}"` : ""}>How to Do This</button>
+                ${alternateEntry ? `<span class="strength-exercise-meta">Alternative available: ${escapeHtml(alternateEntry.name)}</span>` : ""}
+              </div>
               <div class="strength-exercise-meta">Target ${escapeHtml(String(exercise.targetSets || exercise.sets))} x ${escapeHtml(String(exercise.targetReps || exercise.reps))}</div>
               <div class="strength-exercise-meta">Last: ${escapeHtml(lastWeight || "--")} ${lastReps ? `for ${escapeHtml(lastReps)}` : ""}</div>
               <div class="strength-exercise-meta">${escapeHtml(getExerciseProgressionSuggestion(exercise))}</div>
-              <details class="exercise-tips">
-                <summary>Form tips</summary>
-                <ul>
-                  ${(exercise.tips || []).map((tip) => `<li>${escapeHtml(tip)}</li>`).join("")}
-                </ul>
-              </details>
             </div>
           </div>
           <div class="strength-sets">
@@ -1981,6 +2041,9 @@ function renderStrengthCard(summary) {
   }
   for (const button of strengthCard.querySelectorAll(".strength-complete-set")) {
     button.addEventListener("click", handleStrengthSetToggle);
+  }
+  for (const button of strengthCard.querySelectorAll(".exercise-help-trigger")) {
+    button.addEventListener("click", () => openExerciseHelp(button.dataset.helpSlug, button.dataset.helpAlt || null));
   }
   const saveWorkoutButton = document.getElementById("save-strength-session");
   if (saveWorkoutButton) {

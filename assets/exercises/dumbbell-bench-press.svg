@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" role="img" aria-label="Placeholder demo for dumbbell bench press">
+  <rect width="480" height="320" fill="#f6efe4"/>
+  <rect x="24" y="24" width="432" height="272" rx="28" fill="#fffaf1" stroke="#0d3b66" stroke-opacity=".15"/>
+  <text x="240" y="120" text-anchor="middle" font-family="Avenir Next, Segoe UI, sans-serif" font-size="28" fill="#0d3b66" font-weight="700">Dumbbell Bench Press</text>
+  <text x="240" y="164" text-anchor="middle" font-family="Avenir Next, Segoe UI, sans-serif" font-size="18" fill="#5c677d">Replace with looping GIF / video demo</text>
+  <text x="240" y="204" text-anchor="middle" font-family="Avenir Next, Segoe UI, sans-serif" font-size="16" fill="#5c677d">assets/exercises/dumbbell-bench-press.gif</text>
+</svg>
