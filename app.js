@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.5.4";
+const APP_VERSION = "v4.6.0";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const mealSlots = ["morning", "lunch", "afternoon", "dinner", "other"];
@@ -1454,7 +1454,8 @@ function getLastExercisePerformance(name) {
 function getExerciseProgressionSuggestion(exercise) {
   const previous = getLastExercisePerformance(exercise.name);
   if (!previous) {
-    return `Start with a manageable load for ${exercise.sets}x${exercise.reps}.`;
+    const guidance = getExerciseStartingGuidance(exercise);
+    return guidance.summaryText || `Start with a manageable load for ${exercise.sets}x${exercise.reps}.`;
   }
 
   const lastSets = previous.exercise.actualSets || [];
@@ -1473,6 +1474,23 @@ function getExerciseProgressionSuggestion(exercise) {
   return `Repeat ${lastWeight || "the same load"} and own the prescription before adding more.`;
 }
 
+function getExerciseStartingGuidance(exercise) {
+  const helpEntry = getExerciseHelpEntry(exercise.helpSlug || exercise.name);
+  const weightText = helpEntry?.recommendedStartingWeight || "";
+  const repsText = helpEntry?.recommendedStartingReps || `${exercise.sets} x ${exercise.reps}`;
+  const prefillWeight = helpEntry?.recommendedStartingWeightValue || "";
+  return {
+    helpEntry,
+    weightText,
+    repsText,
+    prefillWeight,
+    isBodyweight: !prefillWeight,
+    summaryText: weightText
+      ? `Suggested start: ${weightText} for ${repsText}`
+      : `Suggested start: ${repsText}`,
+  };
+}
+
 function createStrengthSession(dateKey) {
   const workout = getWorkoutPlan();
   return migrateStrengthSession({
@@ -1484,9 +1502,10 @@ function createStrengthSession(dateKey) {
     exercises: workout.exercises.map((exercise) => {
       const last = getLastExercisePerformance(exercise.name);
       const lastWeight = last?.exercise?.actualSets?.find((set) => set.weight)?.weight || "";
+      const starter = getExerciseStartingGuidance(exercise);
       const actualSets = Array.from({ length: exercise.sets }, (_, index) => ({
         set: index + 1,
-        weight: lastWeight,
+        weight: lastWeight || starter.prefillWeight,
         reps: "",
         completed: false,
       }));
@@ -1659,31 +1678,12 @@ function openExerciseHelp(helpSlug, alternateHelpSlug = null) {
     return;
   }
 
-  exerciseHelpTitle.textContent = primary.name;
+  const showingCombo = primary.slug === "plank" && alternate?.slug === "dead-bug";
+  exerciseHelpTitle.textContent = showingCombo ? "Plank / Dead Bug" : primary.name;
   exerciseHelpContent.innerHTML = `
-    <div class="help-media">
-      ${renderExerciseDemoMedia(primary)}
-    </div>
-    <p class="help-description">${escapeHtml(primary.description)}</p>
-    <div class="help-section">
-      <div class="help-section-title">Quick Cues</div>
-      <div class="cue-chip-list">
-        ${(primary.quickCues || []).map((cue) => `<span class="cue-chip">${escapeHtml(cue)}</span>`).join("")}
-      </div>
-    </div>
-    <div class="help-section">
-      <div class="help-section-title">Form Tips</div>
-      <ul>
-        ${primary.formTips.map((tip) => `<li>${escapeHtml(tip)}</li>`).join("")}
-      </ul>
-    </div>
-    <div class="help-section">
-      <div class="help-section-title">Common Mistakes</div>
-      <ul>
-        ${primary.commonMistakes.map((tip) => `<li>${escapeHtml(tip)}</li>`).join("")}
-      </ul>
-    </div>
-    ${alternate ? `
+    ${renderExerciseHelpBlock(primary, showingCombo ? "Primary Option" : "")}
+    ${showingCombo && alternate ? renderExerciseHelpBlock(alternate, "Alternative Core Option") : ""}
+    ${alternate && !showingCombo ? `
       <div class="help-section alternate-help">
         <div class="help-section-title">Alternative Option</div>
         <p class="help-description">${escapeHtml(alternate.name)} is a valid substitute on days when you want a bodyweight press.</p>
@@ -1699,6 +1699,46 @@ function openExerciseHelp(helpSlug, alternateHelpSlug = null) {
 
   exerciseHelpSheet.classList.remove("is-hidden");
   exerciseHelpSheet.setAttribute("aria-hidden", "false");
+}
+
+function renderExerciseHelpBlock(entry, label = "") {
+  return `
+    <section class="help-entry-block">
+      ${label ? `<div class="help-entry-label">${escapeHtml(label)}</div>` : ""}
+      <div class="help-entry-name">${escapeHtml(entry.name)}</div>
+      <div class="help-media">
+        ${renderExerciseDemoMedia(entry)}
+      </div>
+      <p class="help-description">${escapeHtml(entry.description)}</p>
+      <div class="help-section">
+        <div class="help-section-title">Starting Recommendation</div>
+        <div class="help-starting-grid">
+          <div class="help-starting-stat"><strong>${escapeHtml(entry.recommendedStartingWeight || "bodyweight")}</strong><span>starting weight</span></div>
+          <div class="help-starting-stat"><strong>${escapeHtml(entry.recommendedStartingReps || "--")}</strong><span>starting reps</span></div>
+        </div>
+        ${entry.recommendedStartingNote ? `<div class="help-description">${escapeHtml(entry.recommendedStartingNote)}</div>` : ""}
+        ${entry.backSensitivityNote ? `<div class="help-safety-note">${escapeHtml(entry.backSensitivityNote)}</div>` : ""}
+      </div>
+      <div class="help-section">
+        <div class="help-section-title">Quick Cues</div>
+        <div class="cue-chip-list">
+          ${(entry.quickCues || []).map((cue) => `<span class="cue-chip">${escapeHtml(cue)}</span>`).join("")}
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-title">Form Tips</div>
+        <ul>
+          ${entry.formTips.map((tip) => `<li>${escapeHtml(tip)}</li>`).join("")}
+        </ul>
+      </div>
+      <div class="help-section">
+        <div class="help-section-title">Common Mistakes</div>
+        <ul>
+          ${entry.commonMistakes.map((tip) => `<li>${escapeHtml(tip)}</li>`).join("")}
+        </ul>
+      </div>
+    </section>
+  `;
 }
 
 function closeExerciseHelp() {
@@ -2042,7 +2082,12 @@ function renderStrengthCard(summary) {
     ...exercise,
     targetSets: exercise.sets,
     targetReps: exercise.reps,
-    actualSets: Array.from({ length: exercise.sets }, (_, index) => ({ set: index + 1, weight: "", reps: "", completed: false })),
+    actualSets: Array.from({ length: exercise.sets }, (_, index) => ({
+      set: index + 1,
+      weight: getExerciseStartingGuidance(exercise).prefillWeight,
+      reps: "",
+      completed: false,
+    })),
   })));
 
   strengthCard.innerHTML = `
@@ -2051,6 +2096,19 @@ function renderStrengthCard(summary) {
         <div class="strength-kicker">${isStrengthDay(dateKey) ? "Workout scheduled today" : "Recovery / non-lifting day"}</div>
         <h3>${escapeHtml(workout.name)}</h3>
         <p>${isStrengthDay(dateKey) ? "Thirty-minute full-body session. Progress with clean reps and steady effort." : `Next lifting day: ${summary.strength.nextDay ? formatDisplayDate(summary.strength.nextDay) : "TBD"}`}</p>
+        <div class="strength-guidance-card">
+          <div class="strength-guidance-title">First Week Guidance</div>
+          <ul class="strength-guidance-list">
+            <li>Start lighter than you think you need.</li>
+            <li>You should finish each set feeling like you still had 2-3 good reps left.</li>
+            <li>If form breaks down, the weight is too heavy.</li>
+            <li>Controlled reps matter more than load.</li>
+            <li>For back-sensitive movements, especially Romanian deadlifts, use caution and stay conservative.</li>
+            <li>It is better to leave the gym feeling capable than wrecked.</li>
+          </ul>
+          <div class="strength-guidance-meta">Rest 60 seconds between sets. For squat and Romanian deadlift, use 75-90 seconds if needed. Complete all 3 sets of one exercise before moving to the next exercise.</div>
+          <div class="strength-guidance-warning">Back safety: Romanian deadlift is a technique exercise first, goblet squat depth only goes as low as posture stays solid, rows should avoid twisting or jerking, and if low-back discomfort appears, reduce load, shorten range, or stop the movement.</div>
+        </div>
       </div>
       <div class="strength-actions">
         ${isComplete
@@ -2068,6 +2126,7 @@ function renderStrengthCard(summary) {
             const lastReps = last?.exercise?.actualSets?.map((set) => set.reps).filter(Boolean).join("/") || "";
             const helpEntry = getExerciseHelpEntry(exercise.helpSlug || exercise.name);
             const alternateEntry = exercise.alternateHelpSlug ? getExerciseHelpEntry(exercise.alternateHelpSlug) : null;
+            const starter = getExerciseStartingGuidance(exercise);
             return `
         <article class="strength-exercise">
           <div class="strength-exercise-top">
@@ -2084,6 +2143,9 @@ function renderStrengthCard(summary) {
               </div>
               <div class="strength-exercise-meta">Target ${escapeHtml(String(exercise.targetSets || exercise.sets))} x ${escapeHtml(String(exercise.targetReps || exercise.reps))}</div>
               <div class="strength-exercise-meta">Last: ${escapeHtml(lastWeight || "--")} ${lastReps ? `for ${escapeHtml(lastReps)}` : ""}</div>
+              ${!last ? `<div class="strength-starting-meta">${escapeHtml(starter.summaryText)}</div>` : ""}
+              ${!last && helpEntry?.recommendedStartingNote ? `<div class="strength-exercise-meta">${escapeHtml(helpEntry.recommendedStartingNote)}</div>` : ""}
+              ${!last && helpEntry?.backSensitivityNote ? `<div class="strength-safety-note">${escapeHtml(helpEntry.backSensitivityNote)}</div>` : ""}
               <div class="strength-exercise-meta">${escapeHtml(getExerciseProgressionSuggestion(exercise))}</div>
             </div>
           </div>
