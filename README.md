@@ -7,7 +7,7 @@ Health Quest is a local-first iPhone-friendly web app for manual daily health lo
 - Logs daily steps manually.
 - Logs exercise minutes manually.
 - Logs weight and body fat percentage manually.
-- Includes quick food intake logging for `morning`, `lunch`, `afternoon`, `dinner`, and `other`.
+- Includes structured food logging for new entries using five daily checkpoints, while preserving legacy meal-scale food history.
 - Converts those into:
   - A daily score
   - XP and levels
@@ -18,7 +18,7 @@ Health Quest is a local-first iPhone-friendly web app for manual daily health lo
 - Includes a lightweight campaign-story layer.
 - Saves everything locally in browser storage.
 - Includes a visible build version and export timestamp.
-- Uses a behavior-weighted scoring model that emphasizes steps, exercise, food quality/control, lighter body-metric bonuses, and now an integrated Strength Quest module.
+- Uses a behavior-weighted scoring model that emphasizes steps, exercise, food structure/control, lighter body-metric bonuses, and now an integrated Strength Quest module.
 - Includes a separate `Strength` tab with workout logging and tap-to-open exercise help sheets.
 
 ## Important Apple Limitation
@@ -42,8 +42,9 @@ If you host this folder somewhere accessible from Safari:
 ## Notes
 
 - Direct Apple HealthKit access requires a native iPhone app. This version is manual-entry by design.
+- Food scoring was updated on April 6, 2026 to a structured five-checkpoint model for new entries going forward. Older food entries remain intact and still appear in history, exports, and trends as legacy data.
 - Service worker install/offline support usually requires HTTP or HTTPS, not `file://`.
-- The installed PWA is versioned for GitHub Pages updates. New builds bump the visible app version, the manifest URL, the CSS/JS asset URLs, and the service-worker cache name so stale app-shell caches are cleared more reliably. This build is `v4.6.1`.
+- The installed PWA is versioned for GitHub Pages updates. New builds bump the visible app version, the manifest URL, the CSS/JS asset URLs, and the service-worker cache name so stale app-shell caches are cleared more reliably. This build is `v4.7.0`.
 - The service worker uses a network-first strategy for app-shell files, then falls back to cache if offline.
 - If a new service worker is waiting, the app can show an in-app refresh/update prompt.
 - If the installed PWA still looks old after deploy, open the site in Safari once, then refresh or reopen the installed app.

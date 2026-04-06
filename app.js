@@ -1,8 +1,36 @@
-const APP_VERSION = "v4.6.1";
+const APP_VERSION = "v4.7.0";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
+const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
 const mealSlots = ["morning", "lunch", "afternoon", "dinner", "other"];
 const coreMealSlots = ["morning", "lunch", "afternoon", "dinner"];
+const foodStructureItems = [
+  {
+    key: "breakfastControlled",
+    label: "Breakfast Controlled",
+    helper: "Protein-forward, controlled sugar, no oversized sweet breakfast.",
+  },
+  {
+    key: "lunchAnchorMeal",
+    label: "Lunch Anchor Meal",
+    helper: "Protein + fiber + portion control. No routine dessert.",
+  },
+  {
+    key: "afternoonSnackControlled",
+    label: "Afternoon Snack Controlled",
+    helper: "Intentional snack, protein-based or paired, no grazing.",
+  },
+  {
+    key: "dinnerPortionControlled",
+    label: "Dinner Portion Controlled",
+    helper: "One plate, protein included, no seconds.",
+  },
+  {
+    key: "noNightEating",
+    label: "No Night Eating",
+    helper: "No snacks after dinner cutoff.",
+  },
+];
 const scoringWeights = {
   steps: 30,
   exercise: 25,
@@ -484,6 +512,11 @@ function migrateEntry(dateKey, rawEntry, sourceVersion = 4) {
     const value = rawEntry?.food?.[slot];
     migratedFood[slot] = normalizeFoodValue(value, sourceVersion);
   }
+  const migratedFoodStructure = createEmptyFoodStructure();
+  for (const item of foodStructureItems) {
+    migratedFoodStructure[item.key] = Boolean(rawEntry?.foodStructure?.[item.key]);
+  }
+  const hasStructuredFood = Boolean(rawEntry?.foodModel === "structure-v1" || rawEntry?.foodStructure);
 
   return {
     date: dateKey,
@@ -494,7 +527,10 @@ function migrateEntry(dateKey, rawEntry, sourceVersion = 4) {
       bodyFat: rawEntry?.bodyFat == null ? null : Number(rawEntry.bodyFat),
       notes: typeof rawEntry?.notes === "string" ? rawEntry.notes.slice(0, 120) : "",
       foodNote: typeof rawEntry?.foodNote === "string" ? rawEntry.foodNote.slice(0, 120) : "",
+      foodStructureNote: typeof rawEntry?.foodStructureNote === "string" ? rawEntry.foodStructureNote.slice(0, 120) : "",
+      foodModel: hasStructuredFood ? "structure-v1" : "legacy",
       food: migratedFood,
+      foodStructure: migratedFoodStructure,
     habits: {
       protein: Boolean(rawEntry?.habits?.protein),
       produce: Boolean(rawEntry?.habits?.produce),
@@ -683,7 +719,10 @@ function getEntry(dateKey) {
       bodyFat: null,
       notes: "",
       foodNote: "",
+      foodStructureNote: "",
+      foodModel: dateKey >= FOOD_SCORING_UPDATE_DATE ? "structure-v1" : "legacy",
       food: createEmptyFoodEntry(),
+      foodStructure: createEmptyFoodStructure(),
     habits: {
       protein: false,
       produce: false,
@@ -694,6 +733,10 @@ function getEntry(dateKey) {
     food: {
       ...createEmptyFoodEntry(),
       ...((state.entries[dateKey] || {}).food || {}),
+    },
+    foodStructure: {
+      ...createEmptyFoodStructure(),
+      ...((state.entries[dateKey] || {}).foodStructure || {}),
     },
     habits: {
       protein: Boolean((state.entries[dateKey] || {}).habits?.protein),
@@ -714,8 +757,24 @@ function createEmptyFoodEntry() {
   };
 }
 
+function createEmptyFoodStructure() {
+  return {
+    breakfastControlled: false,
+    lunchAnchorMeal: false,
+    afternoonSnackControlled: false,
+    dinnerPortionControlled: false,
+    noNightEating: false,
+  };
+}
+
+function isStructuredFoodEntry(entry) {
+  return (entry?.foodModel || "") === "structure-v1";
+}
+
 function saveDailyEntry() {
   const dateKey = getSelectedDateKey();
+  const existing = getEntry(dateKey);
+  const foodModel = existing.foodModel || (dateKey >= FOOD_SCORING_UPDATE_DATE ? "structure-v1" : "legacy");
   state.entries[dateKey] = {
     date: dateKey,
     mode: state.settings.mode,
@@ -724,8 +783,15 @@ function saveDailyEntry() {
       weight: parseOptionalNumber(entryWeightInput.value),
       bodyFat: parseOptionalNumber(entryBodyFatInput.value),
       notes: (entryNotesInput.value || "").trim().slice(0, 120),
-      foodNote: (document.getElementById("today-food-note")?.value || getEntry(dateKey).foodNote || "").trim().slice(0, 120),
-      food: readFoodForm(getEntry(dateKey).food),
+      foodNote: foodModel === "legacy"
+        ? (document.getElementById("today-food-note")?.value || existing.foodNote || "").trim().slice(0, 120)
+        : existing.foodNote || "",
+      foodStructureNote: foodModel === "structure-v1"
+        ? (document.getElementById("today-food-structure-note")?.value || document.getElementById("food-structure-note")?.value || existing.foodStructureNote || "").trim().slice(0, 120)
+        : existing.foodStructureNote || "",
+      foodModel,
+      food: foodModel === "legacy" ? readFoodForm(existing.food) : existing.food,
+      foodStructure: foodModel === "structure-v1" ? readFoodStructureForm(existing.foodStructure) : existing.foodStructure,
     habits: {
       protein: habitProteinInput.checked,
       produce: habitProduceInput.checked,
@@ -737,6 +803,19 @@ function saveDailyEntry() {
   saveState();
   render();
   setStatus(`Saved entry for ${formatDisplayDate(dateKey)}.`);
+}
+
+function readFoodStructureForm(fallbackStructure = createEmptyFoodStructure()) {
+  const structure = { ...createEmptyFoodStructure(), ...fallbackStructure };
+  for (const item of foodStructureItems) {
+    const source =
+      document.getElementById(`today-food-structure-${item.key}`) ||
+      document.getElementById(`food-structure-${item.key}`);
+    if (source) {
+      structure[item.key] = Boolean(source.checked);
+    }
+  }
+  return structure;
 }
 
 function readFoodForm(fallbackFood = createEmptyFoodEntry()) {
@@ -768,6 +847,101 @@ function syncFoodOptionClasses() {
     const input = option.querySelector("input");
     option.classList.toggle("active", Boolean(input && input.checked));
   }
+}
+
+function getFoodStructureScore(foodStructure = createEmptyFoodStructure()) {
+  return foodStructureItems.reduce((sum, item) => sum + (foodStructure[item.key] ? 1 : 0), 0);
+}
+
+function getFoodStructureCoaching(score) {
+  if (score >= 5) {
+    return "Strong food day. Keep stacking these.";
+  }
+  if (score >= 4) {
+    return "Solid day. One small improvement available.";
+  }
+  if (score >= 3) {
+    return "Acceptable, but there's room to tighten structure.";
+  }
+  return "Today drifted. Focus on the next meal, not perfection.";
+}
+
+function getFoodStructureRating(score) {
+  if (score >= 5) {
+    return "excellent day";
+  }
+  if (score >= 4) {
+    return "strong day";
+  }
+  if (score >= 3) {
+    return "acceptable day";
+  }
+  return "off-track day";
+}
+
+function getLegacyFoodAverage(day) {
+  const values = (day.answeredMeals || [])
+    .map((slot) => day.food?.[slot])
+    .filter((value) => value != null);
+  return values.length ? average(values) : null;
+}
+
+function getUnifiedFoodMetric(day) {
+  if (day.foodModel === "structure-v1") {
+    return day.foodStructureScore ?? getFoodStructureScore(day.foodStructure);
+  }
+  return getLegacyFoodAverage(day);
+}
+
+function renderFoodLog() {
+  const entry = getEntry(getSelectedDateKey());
+  if (isStructuredFoodEntry(entry)) {
+    const preview = scoreFood(entry);
+    foodLog.innerHTML = `
+      <div class="food-structure-grid">
+        ${foodStructureItems.map((item) => `
+          <label class="food-structure-item">
+            <input id="food-structure-${item.key}" type="checkbox" ${entry.foodStructure[item.key] ? "checked" : ""}>
+            <span class="food-structure-copy">
+              <strong>${escapeHtml(item.label)}</strong>
+              <small>${escapeHtml(item.helper)}</small>
+            </span>
+          </label>
+        `).join("")}
+      </div>
+      <div class="food-structure-summary">
+        <div class="food-structure-score">Food Structure Score: ${preview.foodStructureScore}/5</div>
+        <div class="food-structure-coaching">${escapeHtml(preview.foodCoachingCopy)}</div>
+        <div class="food-structure-hint">Consistent food structure + lifting is the main win.</div>
+        <label class="quick-field quick-notes">
+          <span>Food structure note</span>
+          <input id="food-structure-note" type="text" maxlength="120" value="${escapeHtml(entry.foodStructureNote || "")}" placeholder="What helped, or what pushed food off track?">
+        </label>
+      </div>
+    `;
+    for (const input of foodLog.querySelectorAll('input[id^="food-structure-"]')) {
+      input.addEventListener("change", () => render());
+    }
+    const noteInput = document.getElementById("food-structure-note");
+    if (noteInput) {
+      noteInput.addEventListener("input", () => {
+        const todayNote = document.getElementById("today-food-structure-note");
+        if (todayNote) {
+          todayNote.value = noteInput.value;
+        }
+      });
+    }
+    return;
+  }
+
+  foodLog.innerHTML = Object.entries(foodOptions)
+    .map(([value, option]) => `
+      <article class="food-row legend-row">
+        <div class="food-label">${value}</div>
+        <div class="food-legend-copy"><strong>${escapeHtml(option.shortLabel)}</strong> - ${escapeHtml(option.description)}</div>
+      </article>
+    `)
+    .join("");
 }
 
 function addReward() {
@@ -939,8 +1113,10 @@ function getCurrentChapter(level) {
 
 function getDraftEntry() {
   const dateKey = getSelectedDateKey();
+  const existing = getEntry(dateKey);
+  const foodModel = existing.foodModel || (dateKey >= FOOD_SCORING_UPDATE_DATE ? "structure-v1" : "legacy");
   return {
-    ...getEntry(dateKey),
+    ...existing,
     date: dateKey,
     mode: state.settings.mode,
     steps: clampNumber(entryStepsInput.value, 0, 100000, 0),
@@ -948,8 +1124,15 @@ function getDraftEntry() {
       weight: parseOptionalNumber(entryWeightInput.value),
       bodyFat: parseOptionalNumber(entryBodyFatInput.value),
       notes: (entryNotesInput.value || "").trim().slice(0, 120),
-      foodNote: (document.getElementById("today-food-note")?.value || getEntry(dateKey).foodNote || "").trim().slice(0, 120),
-      food: readFoodForm(getEntry(dateKey).food),
+      foodNote: foodModel === "legacy"
+        ? (document.getElementById("today-food-note")?.value || existing.foodNote || "").trim().slice(0, 120)
+        : existing.foodNote || "",
+      foodStructureNote: foodModel === "structure-v1"
+        ? (document.getElementById("today-food-structure-note")?.value || document.getElementById("food-structure-note")?.value || existing.foodStructureNote || "").trim().slice(0, 120)
+        : existing.foodStructureNote || "",
+      foodModel,
+      food: foodModel === "legacy" ? readFoodForm(existing.food) : existing.food,
+      foodStructure: foodModel === "structure-v1" ? readFoodStructureForm(existing.foodStructure) : existing.foodStructure,
     habits: {
       protein: habitProteinInput.checked,
       produce: habitProduceInput.checked,
@@ -960,6 +1143,22 @@ function getDraftEntry() {
 }
 
 function scoreFood(entry) {
+  if (entry.foodModel === "structure-v1") {
+    const foodStructure = { ...createEmptyFoodStructure(), ...(entry.foodStructure || {}) };
+    const foodStructureScore = getFoodStructureScore(foodStructure);
+    const foodPoints = Math.round((foodStructureScore / foodStructureItems.length) * scoringWeights.food.total);
+    return {
+      foodModel: "structure-v1",
+      foodPoints,
+      foodStructureScore,
+      foodCoachingCopy: getFoodStructureCoaching(foodStructureScore),
+      foodStructureRating: getFoodStructureRating(foodStructureScore),
+      foodIsProvisional: false,
+      coreAnsweredCount: foodStructureScore,
+      answeredCheckpoints: foodStructureItems.filter((item) => foodStructure[item.key]).length,
+    };
+  }
+
   const getFoodScore = (value) => foodOptions[value]?.score ?? foodOptions[value]?.quality ?? 0;
   const coreAnswered = coreMealSlots.filter((slot) => entry.food[slot] !== null);
   const coreScored = coreAnswered.filter((slot) => foodOptions[entry.food[slot]]?.quality !== null);
@@ -993,6 +1192,7 @@ function scoreFood(entry) {
   );
 
   return {
+    foodModel: "legacy",
     foodPoints,
     coreFoodPoints,
     otherFoodPoints,
@@ -1616,13 +1816,29 @@ function getKeyActions(summary) {
   if (summary.today.stepPoints < scoringWeights.steps * 0.75) {
     actions.push("Hit movement goal");
   }
-  if ((summary.today.food?.other ?? 0) < 4) {
-    actions.push("Stay out of 4-5 eating territory");
+  if (summary.today.mode === "full") {
+    if (summary.today.foodModel === "structure-v1") {
+      if ((summary.today.foodStructureScore ?? 0) < 4) {
+        actions.push("Tighten food structure");
+      }
+    } else if ((summary.today.food?.other ?? 0) < 4) {
+      actions.push("Stay out of 4-5 eating territory");
+    }
   }
   return actions.slice(0, 3);
 }
 
 function getFoodStatusSummary(day) {
+  if (day.foodModel === "structure-v1") {
+    const score = day.foodStructureScore ?? getFoodStructureScore(day.foodStructure);
+    if (score >= 4) {
+      return score >= 5 ? "Excellent structure" : "Strong structure";
+    }
+    if (score >= 3) {
+      return "Acceptable structure";
+    }
+    return "Food drift";
+  }
   const logged = mealSlots.filter((slot) => day.food[slot] != null);
   if (!logged.length) {
     return "No meals logged yet";
@@ -1828,7 +2044,9 @@ function renderTodayCard(summary) {
   const selectedDateLabel = formatDisplayDate(getSelectedDateKey());
   const isMaintenance = state.settings.mode === "maintenance";
   const chapter = summary.currentChapter;
-  const todayFood = readFoodForm(today.food);
+  const showingStructuredFood = !isMaintenance && today.foodModel === "structure-v1";
+  const structuredFood = readFoodStructureForm(today.foodStructure);
+  const structuredPreview = scoreFood({ ...today, foodModel: "structure-v1", foodStructure: structuredFood });
   const focus = getTodayFocus(summary);
   const keyActions = getKeyActions(summary);
   const quickStats = [
@@ -1921,35 +2139,33 @@ function renderTodayCard(summary) {
           <label class="checkbox-row compact"><input id="today-habit-stopped" type="checkbox" ${today.habits.stoppedBeforeStuffed ? "checked" : ""}> Stopped before stuffed</label>
           <label class="checkbox-row compact"><input id="today-habit-movement" type="checkbox" ${today.habits.movement ? "checked" : ""}> Movement target</label>
         </div>
-          ${isMaintenance ? "" : `
+          ${showingStructuredFood ? `
             <div class="today-meals">
               <div class="today-meals-header">
-                <span>Meals</span>
-                <span class="today-meals-hint">Tap a number. Full legend below. <button id="repeat-last-meals" type="button" class="mini-action">Repeat last meals</button></span>
+                <span>Food Structure</span>
+                <span class="today-meals-hint">5 daily checkpoints for control and consistency.</span>
               </div>
-              ${mealSlots.map((slot) => `
-                <div class="today-meal-row">
-                  <div class="today-meal-label">${escapeHtml(getMealDisplayLabel(slot))}</div>
-                  <div class="today-meal-options">
-                    ${Object.keys(foodOptions).map((value) => `
-                      <label class="today-meal-chip ${Number(value) === todayFood[slot] ? "active" : ""}" title="${escapeHtml(foodOptions[value].shortLabel)}">
-                      <input
-                        type="radio"
-                        name="today-food-${escapeHtml(slot)}"
-                        value="${value}"
-                        ${Number(value) === todayFood[slot] ? "checked" : ""}
-                      >
-                      <span>${value}</span>
-                    </label>
-                  `).join("")}
-                </div>
-                </div>
-              `).join("")}
+              <div class="food-structure-grid compact">
+                ${foodStructureItems.map((item) => `
+                  <label class="food-structure-item compact">
+                    <input id="today-food-structure-${item.key}" type="checkbox" ${structuredFood[item.key] ? "checked" : ""}>
+                    <span class="food-structure-copy">
+                      <strong>${escapeHtml(item.label)}</strong>
+                      <small>${escapeHtml(item.helper)}</small>
+                    </span>
+                  </label>
+                `).join("")}
+              </div>
+              <div class="food-structure-summary compact">
+                <div class="food-structure-score">Food Structure Score: ${structuredPreview.foodStructureScore}/5</div>
+                <div class="food-structure-rating">${escapeHtml(structuredPreview.foodStructureRating)}</div>
+                <div class="food-structure-coaching">${escapeHtml(structuredPreview.foodCoachingCopy)}</div>
+                <div class="food-structure-hint">Protein-forward meals support lifting recovery.</div>
+              </div>
               <label class="quick-field quick-notes">
-                <span>Food note</span>
-                <input id="today-food-note" type="text" maxlength="120" value="${escapeHtml(today.foodNote || "")}" placeholder="late snack, client lunch, dessert stack">
+                <span>Food structure note</span>
+                <input id="today-food-structure-note" type="text" maxlength="120" value="${escapeHtml(today.foodStructureNote || "")}" placeholder="What helped, or what pushed food off track?">
               </label>
-              ${today.foodIsProvisional ? `<div class="today-meals-reminder">Food score is provisional until more of the day is logged.</div>` : ""}
             </div>
           `}
       </div>
@@ -1964,7 +2180,7 @@ function renderTodayCard(summary) {
       <div class="today-breakdown ${isMaintenance ? "is-hidden" : ""}">
         <div class="score-row"><span>Steps</span><span>${today.stepPoints}/${scoringWeights.steps}</span></div>
         <div class="score-row"><span>Exercise</span><span>${today.exercisePoints}/${scoringWeights.exercise}</span></div>
-        ${today.mode === "full" ? `<div class="score-row"><span>Food</span><span>${today.foodPoints}/${scoringWeights.food.total}</span></div>` : ""}
+        ${today.mode === "full" ? `<div class="score-row"><span>${today.foodModel === "structure-v1" ? "Food Structure" : "Legacy Food"}</span><span>${today.foodModel === "structure-v1" ? `${today.foodStructureScore || 0}/5` : `${today.foodPoints}/${scoringWeights.food.total}`}</span></div>` : ""}
         <div class="score-row"><span>Body metrics</span><span>${today.bodyMetricPoints}/${scoringWeights.bodyMetrics.total}</span></div>
         <div class="score-row"><span>Habits</span><span>${today.habitPoints}/${Object.values(scoringWeights.habits).reduce((sum, value) => sum + value, 0)}</span></div>
         <div class="today-breakdown-note">${escapeHtml(getTodayBreakdownNote(today))}</div>
@@ -1995,10 +2211,11 @@ function wireTodayQuickInputs() {
   syncQuickCheckbox("today-habit-produce", habitProduceInput);
   syncQuickCheckbox("today-habit-stopped", habitStoppedInput);
   syncQuickCheckbox("today-habit-movement", habitMovementInput);
+  syncQuickInput("today-food-structure-note", document.getElementById("food-structure-note"));
 }
 
 function wireTodayMealInputs() {
-  for (const input of todayCard.querySelectorAll('input[name^="today-food-"]')) {
+  for (const input of todayCard.querySelectorAll('input[id^="today-food-structure-"]')) {
     input.addEventListener("change", () => {
       render();
     });
@@ -2069,7 +2286,7 @@ function renderWeeklySummary(summary) {
     statCard("Best 7-day Weight Avg", formatMaybe(summary.weekly.bestSevenDayWeightAverage, 1), "Lowest rolling weekly average achieved"),
     statCard("7-day Avg Steps", formatMaybe(summary.weekly.avgStepsLogged), `Goal: ${state.settings.stepGoal}`),
     statCard("7-day Avg Exercise", formatMaybe(summary.weekly.avgExerciseLogged), `Goal: ${state.settings.exerciseGoal} min`),
-    statCard("7-day Avg Food Score", formatMaybe(summary.weekly.avgFoodPointsLogged), `Target: ${scoringWeights.food.total}`),
+    statCard("7-day Avg Food Score*", formatMaybe(summary.weekly.avgFoodPointsLogged), `Target: ${scoringWeights.food.total}`),
   ];
 
   summaryStats.innerHTML = statCards.join("");
@@ -2084,6 +2301,7 @@ function renderWeeklySummary(summary) {
       </article>
     `);
   }
+  guardrailMarkup.push(`<div class="guardrail-item">Food scoring updated to structured model on April 6, 2026. Legacy food scores remain preserved in history.</div>`);
   guardrailList.innerHTML = guardrailMarkup.join("");
 }
 
@@ -2369,17 +2587,17 @@ function buildSignals(loggedEntries, weekly, strengthSummary) {
   const recentFood = loggedEntries.slice(-14).filter((day) => day.mode === "full");
   const priorFood = loggedEntries.slice(-28, -14).filter((day) => day.mode === "full");
   if (recentFood.length >= 4 && priorFood.length >= 4) {
-    const recentAverage = average(
-      recentFood.map((day) => average(day.answeredMeals.map((slot) => day.food[slot]).filter((value) => value != null)))
-    );
-    const priorAverage = average(
-      priorFood.map((day) => average(day.answeredMeals.map((slot) => day.food[slot]).filter((value) => value != null)))
-    );
-    if (recentAverage < priorAverage) {
+    const recentAverage = average(recentFood.map((day) => getUnifiedFoodMetric(day)).filter((value) => value != null));
+    const priorAverage = average(priorFood.map((day) => getUnifiedFoodMetric(day)).filter((value) => value != null));
+    if (recentAverage != null && priorAverage != null && recentAverage > priorAverage) {
       signals.push("Food control improved compared to the prior block.");
     }
   }
-  const recentWarningDays = loggedEntries.slice(-5).filter((day) => (day.food?.dinner ?? 0) >= 3 || (day.food?.other ?? 0) >= 3).length;
+  const recentWarningDays = loggedEntries.slice(-5).filter((day) =>
+    day.foodModel === "structure-v1"
+      ? (day.foodStructureScore ?? 0) <= 2
+      : ((day.food?.dinner ?? 0) >= 3 || (day.food?.other ?? 0) >= 3)
+  ).length;
   if (recentWarningDays >= 3) {
     signals.push("You've had three warning/off-track eating days in the last 5 days.");
   }
@@ -2393,10 +2611,10 @@ function buildWeeklyScorecard(loggedEntries, weekly, strengthSummary) {
   const recentWeek = loggedEntries.slice(-7);
   const recentBody = recentWeek.filter((day) => day.bodyFat != null);
   const recentWeights = recentWeek.filter((day) => day.weight != null);
-  const eatingDays = recentWeek.filter((day) => day.mode === "full" && day.answeredMeals.length);
-  const eatingAverages = eatingDays.map((day) => average(day.answeredMeals.map((slot) => day.food[slot]).filter((value) => value != null)));
-  const inControlDays = eatingAverages.filter((value) => value <= 2).length;
-  const offTrackDays = eatingAverages.filter((value) => value >= 4).length;
+  const eatingDays = recentWeek.filter((day) => day.mode === "full" && (day.foodModel === "structure-v1" || day.answeredMeals.length));
+  const eatingAverages = eatingDays.map((day) => getUnifiedFoodMetric(day)).filter((value) => value != null);
+  const inControlDays = eatingDays.filter((day) => day.foodModel === "structure-v1" ? (day.foodStructureScore ?? 0) >= 4 : (getLegacyFoodAverage(day) ?? 99) <= 2).length;
+  const offTrackDays = eatingDays.filter((day) => day.foodModel === "structure-v1" ? (day.foodStructureScore ?? 0) <= 2 : (getLegacyFoodAverage(day) ?? 0) >= 4).length;
   const consistencyScore = Math.round(
     (Math.min(1, strengthSummary.progress.workoutsThisWeek.length / Math.max(1, state.strengthSettings.daysPerWeek)) * 40) +
     (Math.min(1, inControlDays / Math.max(1, eatingAverages.length || 1)) * 35) +
@@ -2456,8 +2674,28 @@ function exportCsv(type) {
 
   if (type === "food") {
     filename = `health-quest-food-${getTodayKey()}.csv`;
-    rows = [["date", "morning", "lunch", "afternoon", "dinner", "other", "food_note"]].concat(
-      scored.map((day) => [day.date, day.food.morning ?? "", day.food.lunch ?? "", day.food.afternoon ?? "", day.food.dinner ?? "", day.food.other ?? "", day.foodNote || ""])
+    rows = [[
+      "date", "food_model", "morning", "lunch", "afternoon", "dinner", "other",
+      "breakfast_controlled", "lunch_anchor_meal", "afternoon_snack_controlled", "dinner_portion_controlled", "no_night_eating",
+      "food_structure_score", "food_note", "food_structure_note"
+    ]].concat(
+      scored.map((day) => [
+        day.date,
+        day.foodModel || "legacy",
+        day.food.morning ?? "",
+        day.food.lunch ?? "",
+        day.food.afternoon ?? "",
+        day.food.dinner ?? "",
+        day.food.other ?? "",
+        day.foodStructure?.breakfastControlled ? 1 : 0,
+        day.foodStructure?.lunchAnchorMeal ? 1 : 0,
+        day.foodStructure?.afternoonSnackControlled ? 1 : 0,
+        day.foodStructure?.dinnerPortionControlled ? 1 : 0,
+        day.foodStructure?.noNightEating ? 1 : 0,
+        day.foodStructureScore ?? "",
+        day.foodNote || "",
+        day.foodStructureNote || "",
+      ])
     );
   } else if (type === "body") {
     filename = `health-quest-body-${getTodayKey()}.csv`;
@@ -2643,7 +2881,11 @@ function getBossFight(context) {
   const latestWeight = recent.filter((day) => day.weight != null).slice(-1)[0]?.weight ?? null;
   const previousWeight = recent.filter((day) => day.weight != null).slice(-2, -1)[0]?.weight ?? null;
   const highFoodDays = recent.filter((day) => day.mode === "full" && day.foodPoints <= 8).length;
-  const sparseFoodLogging = recent.some((day) => day.mode === "full" && (day.answeredMeals?.length || 0) <= 2);
+  const sparseFoodLogging = recent.some((day) => day.mode === "full" && (
+    day.foodModel === "structure-v1"
+      ? (day.foodStructureScore ?? 0) <= 2
+      : (day.answeredMeals?.length || 0) <= 2
+  ));
   const highActivity = recent.some((day) => day.exerciseMinutes >= state.settings.exerciseGoal * 1.4);
   const socialPattern = recent.some((day) => /party|birthday|client|dinner|lunch|social|restaurant/i.test(day.notes || ""));
 
@@ -2659,7 +2901,11 @@ function getBossFight(context) {
     return bossFightLibrary.find((item) => item.key === (socialPattern ? "social_current" : "fog_of_close_enough"));
   }
 
-  if (recent.some((day) => day.mode === "full" && mealSlots.some((slot) => (day.food?.[slot] ?? 0) >= 4))) {
+  if (recent.some((day) => day.mode === "full" && (
+    day.foodModel === "structure-v1"
+      ? (day.foodStructureScore ?? 0) <= 2
+      : mealSlots.some((slot) => (day.food?.[slot] ?? 0) >= 4)
+  ))) {
     return bossFightLibrary.find((item) => item.key === "the_easy_extra");
   }
 
@@ -2759,13 +3005,14 @@ function renderRecentDays(days) {
         <div class="metric-row">
           <span class="metric-pill">${day.steps || 0} steps</span>
           <span class="metric-pill">${day.exerciseMinutes || 0} min exercise</span>
-          ${day.mode === "full" ? `<span class="metric-pill">Food ${day.foodPoints}/${scoringWeights.food.total}</span>` : ""}
+          ${day.mode === "full" ? `<span class="metric-pill">${day.foodModel === "structure-v1" ? `Food Structure ${day.foodStructureScore || 0}/5` : `Legacy Food ${day.foodPoints}/${scoringWeights.food.total}`}</span>` : ""}
           <span class="metric-pill">Habits ${day.habitPoints}/${Object.values(scoringWeights.habits).reduce((sum, value) => sum + value, 0)}</span>
           <span class="metric-pill">${day.weight != null ? `${day.weight} lb` : "No weight"}</span>
           <span class="metric-pill">${day.bodyFat != null ? `${day.bodyFat}% fat` : "No body fat"}</span>
         </div>
         ${day.notes ? `<div class="day-notes">${escapeHtml(day.notes)}</div>` : ""}
         ${day.foodNote ? `<div class="day-notes">Food note: ${escapeHtml(day.foodNote)}</div>` : ""}
+        ${day.foodStructureNote ? `<div class="day-notes">Food structure note: ${escapeHtml(day.foodStructureNote)}</div>` : ""}
       </article>
     `)
     .join("");

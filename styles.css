@@ -511,6 +511,81 @@ button,
   gap: 12px;
 }
 
+.food-structure-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.food-structure-grid.compact {
+  gap: 8px;
+}
+
+.food-structure-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(13, 59, 102, 0.05);
+  min-width: 0;
+}
+
+.food-structure-item input {
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+.food-structure-item.compact {
+  padding: 10px 12px;
+}
+
+.food-structure-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.food-structure-copy strong,
+.food-structure-copy small {
+  overflow-wrap: anywhere;
+}
+
+.food-structure-copy small {
+  color: var(--muted);
+}
+
+.food-structure-summary {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.food-structure-summary.compact {
+  gap: 4px;
+}
+
+.food-structure-score {
+  font-weight: 800;
+  color: var(--brand);
+}
+
+.food-structure-rating {
+  font-size: 0.88rem;
+  text-transform: capitalize;
+  color: var(--ink);
+}
+
+.food-structure-coaching,
+.food-structure-hint {
+  color: var(--muted);
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+
 .food-row,
 .stat-card,
 .reward-card,
