@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.6.0";
+const APP_VERSION = "v4.6.1";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const mealSlots = ["morning", "lunch", "afternoon", "dinner", "other"];
@@ -568,6 +568,7 @@ function migrateStrengthSession(session, strengthPlan = defaultStrengthPlan) {
         completed: Boolean(prior.completed),
         progressed: Boolean(prior.progressed),
         pr: Boolean(prior.pr),
+        increaseNextTime: Boolean(prior.increaseNextTime),
         note: typeof prior.note === "string" ? prior.note.slice(0, 120) : "",
       };
     }),
@@ -1451,8 +1452,23 @@ function getLastExercisePerformance(name) {
   return null;
 }
 
+function getLastIncreaseMarker(name) {
+  for (let index = state.strengthHistory.length - 1; index >= 0; index -= 1) {
+    const session = state.strengthHistory[index];
+    const exercise = session.exercises?.find((item) => item.name === name && item.increaseNextTime);
+    if (exercise) {
+      return { session, exercise };
+    }
+  }
+  return null;
+}
+
 function getExerciseProgressionSuggestion(exercise) {
   const previous = getLastExercisePerformance(exercise.name);
+  const increaseMarker = getLastIncreaseMarker(exercise.name);
+  if (increaseMarker) {
+    return "Marked to increase from last time. Consider adding 1 rep or a small weight bump if form stays solid.";
+  }
   if (!previous) {
     const guidance = getExerciseStartingGuidance(exercise);
     return guidance.summaryText || `Start with a manageable load for ${exercise.sets}x${exercise.reps}.`;
@@ -1519,6 +1535,7 @@ function createStrengthSession(dateKey) {
         completed: false,
         progressed: false,
         pr: false,
+        increaseNextTime: false,
         note: "",
       };
     }),
@@ -2127,6 +2144,7 @@ function renderStrengthCard(summary) {
             const helpEntry = getExerciseHelpEntry(exercise.helpSlug || exercise.name);
             const alternateEntry = exercise.alternateHelpSlug ? getExerciseHelpEntry(exercise.alternateHelpSlug) : null;
             const starter = getExerciseStartingGuidance(exercise);
+            const increaseMarker = getLastIncreaseMarker(exercise.name);
             return `
         <article class="strength-exercise">
           <div class="strength-exercise-top">
@@ -2146,6 +2164,7 @@ function renderStrengthCard(summary) {
               ${!last ? `<div class="strength-starting-meta">${escapeHtml(starter.summaryText)}</div>` : ""}
               ${!last && helpEntry?.recommendedStartingNote ? `<div class="strength-exercise-meta">${escapeHtml(helpEntry.recommendedStartingNote)}</div>` : ""}
               ${!last && helpEntry?.backSensitivityNote ? `<div class="strength-safety-note">${escapeHtml(helpEntry.backSensitivityNote)}</div>` : ""}
+              ${increaseMarker ? `<div class="strength-increase-reminder">Marked to increase from last time</div>` : ""}
               <div class="strength-exercise-meta">${escapeHtml(getExerciseProgressionSuggestion(exercise))}</div>
             </div>
           </div>
@@ -2159,6 +2178,11 @@ function renderStrengthCard(summary) {
               </div>
             `).join("")}
           </div>
+          <label class="checkbox-row compact strength-increase-toggle">
+            <input type="checkbox" data-strength-exercise-flag="${exerciseIndex}" ${exercise.increaseNextTime ? "checked" : ""}>
+            Increase next time
+          </label>
+          ${exercise.increaseNextTime ? `<div class="strength-flag-badge">Marked to increase</div>` : ""}
         </article>
       `;
         })()}
@@ -2199,6 +2223,9 @@ function renderStrengthCard(summary) {
   }
   for (const button of strengthCard.querySelectorAll(".exercise-help-trigger")) {
     button.addEventListener("click", () => openExerciseHelp(button.dataset.helpSlug, button.dataset.helpAlt || null));
+  }
+  for (const input of strengthCard.querySelectorAll("[data-strength-exercise-flag]")) {
+    input.addEventListener("change", handleStrengthIncreaseToggle);
   }
   const saveWorkoutButton = document.getElementById("save-strength-session");
   if (saveWorkoutButton) {
@@ -2268,6 +2295,14 @@ function handleStrengthSetToggle(event) {
   render();
 }
 
+function handleStrengthIncreaseToggle(event) {
+  const session = getEditableStrengthSession();
+  const exerciseIndex = Number(event.target.dataset.strengthExerciseFlag);
+  session.exercises[exerciseIndex].increaseNextTime = event.target.checked;
+  state.meta.currentStrengthSession = session;
+  render();
+}
+
 function getAutoWorkoutScore(session) {
   const completedSets = session.exercises.flatMap((exercise) => exercise.actualSets).filter((set) => set.completed).length;
   const totalSets = session.exercises.reduce((sum, exercise) => sum + exercise.actualSets.length, 0);
@@ -2302,6 +2337,7 @@ function saveStrengthSession() {
       completed: exercise.actualSets.every((set) => set.completed || (set.weight || set.reps)),
       progressed: currentWeight > lastWeight || allSetsHit,
       pr: currentWeight > lastWeight,
+      increaseNextTime: Boolean(exercise.increaseNextTime),
     };
   });
   const completedSets = session.exercises.flatMap((exercise) => exercise.actualSets).filter((set) => set.completed || set.weight || set.reps).length;
