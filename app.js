@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.8.2";
+const APP_VERSION = "v4.8.3";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -559,7 +559,11 @@ function forceRefreshApp() {
 }
 
 function loadState() {
-  // Migrate forward from the newest known key first, then older shapes if needed.
+  // Compare every known key and keep the richest usable state instead of
+  // blindly trusting the newest key. This helps recover from builds that may
+  // have written a nearly-empty current state while older local keys still
+  // contain the real history.
+  const candidates = [];
   for (const key of [STORAGE_KEY, ...LEGACY_KEYS]) {
     try {
       const raw = localStorage.getItem(key);
@@ -567,13 +571,29 @@ function loadState() {
         continue;
       }
       const parsed = JSON.parse(raw);
-      return migrateState(parsed, key);
+      const migrated = migrateState(parsed, key);
+      candidates.push({ key, state: migrated, richness: getStateRichness(migrated) });
     } catch (error) {
       continue;
     }
   }
 
-  return createEmptyState();
+  if (!candidates.length) {
+    return createEmptyState();
+  }
+
+  candidates.sort((a, b) => b.richness - a.richness);
+  const best = candidates[0];
+
+  if (best.key !== STORAGE_KEY && best.richness > 0) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(best.state));
+    } catch (error) {
+      // Keep the recovered state in memory even if persistence temporarily fails.
+    }
+  }
+
+  return best.state;
 }
 
 function createEmptyState() {
@@ -603,6 +623,15 @@ function createEmptyState() {
   };
 }
 
+function getStateRichness(candidateState) {
+  const entryCount = Object.keys(candidateState?.entries || {}).length;
+  const strengthCount = Array.isArray(candidateState?.strengthHistory) ? candidateState.strengthHistory.length : 0;
+  const rewardCount = Array.isArray(candidateState?.rewards) ? candidateState.rewards.length : 0;
+  const archiveCount = Array.isArray(candidateState?.meta?.storyArchive) ? candidateState.meta.storyArchive.length : 0;
+  const settingsWeight = candidateState?.settings ? 1 : 0;
+  return (entryCount * 100) + (strengthCount * 20) + (rewardCount * 5) + archiveCount + settingsWeight;
+}
+
 function migrateState(parsed, sourceKey) {
   const base = createEmptyState();
   const settings = {
@@ -627,11 +656,21 @@ function migrateState(parsed, sourceKey) {
   const entries = {};
   const sourceVersion = Number(parsed.version || 0);
   for (const [dateKey, rawEntry] of Object.entries(legacyEntries || {})) {
-    entries[dateKey] = migrateEntry(dateKey, rawEntry, sourceVersion);
+    try {
+      entries[dateKey] = migrateEntry(dateKey, rawEntry, sourceVersion);
+    } catch (error) {
+      continue;
+    }
   }
 
   const rewards = Array.isArray(parsed.rewards)
-    ? parsed.rewards.map((reward) => migrateReward(reward))
+    ? parsed.rewards.map((reward) => {
+      try {
+        return migrateReward(reward);
+      } catch (error) {
+        return null;
+      }
+    }).filter(Boolean)
     : [];
 
   const meta = {
@@ -657,7 +696,15 @@ function migrateState(parsed, sourceKey) {
     settings,
     strengthSettings,
     strengthPlan,
-    strengthHistory: Array.isArray(parsed.strengthHistory) ? parsed.strengthHistory.map((session) => migrateStrengthSession(session, strengthPlan)) : [],
+    strengthHistory: Array.isArray(parsed.strengthHistory)
+      ? parsed.strengthHistory.map((session) => {
+        try {
+          return migrateStrengthSession(session, strengthPlan);
+        } catch (error) {
+          return null;
+        }
+      }).filter(Boolean)
+      : [],
     entries,
     rewards,
     meta,
