@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.8.3";
+const APP_VERSION = "v4.8.4";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -570,7 +570,7 @@ function loadState() {
       if (!raw) {
         continue;
       }
-      const parsed = JSON.parse(raw);
+      const parsed = unwrapImportedState(JSON.parse(raw));
       const migrated = migrateState(parsed, key);
       candidates.push({ key, state: migrated, richness: getStateRichness(migrated) });
     } catch (error) {
@@ -630,6 +630,25 @@ function getStateRichness(candidateState) {
   const archiveCount = Array.isArray(candidateState?.meta?.storyArchive) ? candidateState.meta.storyArchive.length : 0;
   const settingsWeight = candidateState?.settings ? 1 : 0;
   return (entryCount * 100) + (strengthCount * 20) + (rewardCount * 5) + archiveCount + settingsWeight;
+}
+
+function unwrapImportedState(parsed) {
+  if (!parsed || typeof parsed !== "object") {
+    return parsed;
+  }
+  if (parsed.entries || parsed.summary || parsed.foodLogs || parsed.strengthHistory) {
+    return parsed;
+  }
+  return parsed.state || parsed.healthQuest || parsed.data || parsed.payload || parsed;
+}
+
+function getStateInventory(candidateState) {
+  return {
+    entries: Object.keys(candidateState?.entries || {}).length,
+    strengthSessions: Array.isArray(candidateState?.strengthHistory) ? candidateState.strengthHistory.length : 0,
+    rewards: Array.isArray(candidateState?.rewards) ? candidateState.rewards.length : 0,
+    storyEvents: Array.isArray(candidateState?.meta?.storyArchive) ? candidateState.meta.storyArchive.length : 0,
+  };
 }
 
 function migrateState(parsed, sourceKey) {
@@ -1322,7 +1341,7 @@ async function importJson(event) {
 
   try {
     const text = await file.text();
-    const parsed = JSON.parse(text);
+    const parsed = unwrapImportedState(JSON.parse(text));
     state = migrateState(parsed, "import");
     saveState();
     hydrateSettingsForm();
@@ -1330,7 +1349,8 @@ async function importJson(event) {
     renderFoodLog();
     renderRewardValueVisibility();
     render();
-    setStatus(`Imported data from ${file.name}.`);
+    const inventory = getStateInventory(state);
+    setStatus(`Imported ${inventory.entries} entries, ${inventory.strengthSessions} workouts, ${inventory.rewards} rewards, and ${inventory.storyEvents} story events from ${file.name}.`);
   } catch (error) {
     setStatus("Import failed. Please choose a valid Health Quest JSON export.");
   } finally {
