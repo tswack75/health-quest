@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.8.5";
+const APP_VERSION = "v4.8.6";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -1598,8 +1598,11 @@ function buildLevelReward(level) {
 
 function createLevelStoryEvent(level, context) {
   const region = context.region.currentRegion;
-  const recentLiftCount = context.strengthSummary.progress.workoutsThisWeek.length;
-  const foodTone = (context.weekly.avgFoodScore || 0) >= 4
+  const recentLiftCount = context.strength?.progress?.workoutsThisWeek?.length || 0;
+  const weeklyFoodAverage = context.weekly?.avgFoodPointsLogged != null
+    ? context.weekly.avgFoodPointsLogged / Math.max(1, scoringWeights.food.total / 5)
+    : 0;
+  const foodTone = weeklyFoodAverage >= 4
     ? "Fuel has been cleaner and more deliberate, which means the system is getting steadier instead of noisier."
     : "The record shows some drag and some uneven footing, but it also shows follow-through instead of denial.";
   const liftTone = recentLiftCount >= 2
