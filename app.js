@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.8.4";
+const APP_VERSION = "v4.8.5";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -643,8 +643,20 @@ function unwrapImportedState(parsed) {
 }
 
 function getStateInventory(candidateState) {
+  const entries = Object.values(candidateState?.entries || {});
   return {
-    entries: Object.keys(candidateState?.entries || {}).length,
+    entries: entries.length,
+    populatedEntries: entries.filter((entry) =>
+      (entry.steps || 0) > 0 ||
+      (entry.exerciseMinutes || 0) > 0 ||
+      entry.weight != null ||
+      entry.bodyFat != null ||
+      (entry.foodModel === "structure-v1"
+        ? getFoodStructureScore(entry.foodStructure) > 0
+        : mealSlots.some((slot) => entry.food?.[slot] != null))
+    ).length,
+    weightDays: entries.filter((entry) => entry.weight != null).length,
+    bodyFatDays: entries.filter((entry) => entry.bodyFat != null).length,
     strengthSessions: Array.isArray(candidateState?.strengthHistory) ? candidateState.strengthHistory.length : 0,
     rewards: Array.isArray(candidateState?.rewards) ? candidateState.rewards.length : 0,
     storyEvents: Array.isArray(candidateState?.meta?.storyArchive) ? candidateState.meta.storyArchive.length : 0,
@@ -781,35 +793,39 @@ function buildLegacyEntries(parsed) {
 }
 
 function migrateEntry(dateKey, rawEntry, sourceVersion = 4) {
+  const entryDate = dateKey || rawEntry?.date || rawEntry?.day || rawEntry?.entryDate || getTodayKey();
   const migratedFood = createEmptyFoodEntry();
+  const sourceFood = rawEntry?.food || rawEntry?.meals || rawEntry?.foodRatings || rawEntry?.foodLog || {};
   for (const slot of mealSlots) {
-    const value = rawEntry?.food?.[slot];
+    const value = sourceFood?.[slot];
     migratedFood[slot] = normalizeFoodValue(value, sourceVersion);
   }
   const migratedFoodStructure = createEmptyFoodStructure();
+  const sourceFoodStructure = rawEntry?.foodStructure || rawEntry?.foodChecks || rawEntry?.structuredFood || {};
   for (const item of foodStructureItems) {
-    migratedFoodStructure[item.key] = Boolean(rawEntry?.foodStructure?.[item.key]);
+    migratedFoodStructure[item.key] = Boolean(sourceFoodStructure?.[item.key]);
   }
-  const hasStructuredFood = Boolean(rawEntry?.foodModel === "structure-v1" || rawEntry?.foodStructure);
+  const sourceHabits = rawEntry?.habits || {};
+  const hasStructuredFood = Boolean(rawEntry?.foodModel === "structure-v1" || rawEntry?.foodStructure || rawEntry?.foodChecks || rawEntry?.structuredFood);
 
   return {
-    date: dateKey,
-    mode: rawEntry?.mode || "full",
-    steps: Number(rawEntry?.steps) || 0,
-    exerciseMinutes: Number(rawEntry?.exerciseMinutes) || 0,
-      weight: rawEntry?.weight == null ? null : Number(rawEntry.weight),
-      bodyFat: rawEntry?.bodyFat == null ? null : Number(rawEntry.bodyFat),
-      notes: typeof rawEntry?.notes === "string" ? rawEntry.notes.slice(0, 120) : "",
-      foodNote: typeof rawEntry?.foodNote === "string" ? rawEntry.foodNote.slice(0, 120) : "",
-      foodStructureNote: typeof rawEntry?.foodStructureNote === "string" ? rawEntry.foodStructureNote.slice(0, 120) : "",
+    date: entryDate,
+    mode: rawEntry?.mode || rawEntry?.loggingMode || "full",
+    steps: Number(rawEntry?.steps ?? rawEntry?.stepCount ?? rawEntry?.stepTotal) || 0,
+    exerciseMinutes: Number(rawEntry?.exerciseMinutes ?? rawEntry?.exercise ?? rawEntry?.exerciseMins ?? rawEntry?.exerciseMinutesTotal) || 0,
+      weight: rawEntry?.weight == null && rawEntry?.weightLbs == null && rawEntry?.scaleWeight == null ? null : Number(rawEntry?.weight ?? rawEntry?.weightLbs ?? rawEntry?.scaleWeight),
+      bodyFat: rawEntry?.bodyFat == null && rawEntry?.bodyFatPct == null && rawEntry?.bodyFatPercent == null ? null : Number(rawEntry?.bodyFat ?? rawEntry?.bodyFatPct ?? rawEntry?.bodyFatPercent),
+      notes: typeof (rawEntry?.notes ?? rawEntry?.note) === "string" ? String(rawEntry?.notes ?? rawEntry?.note).slice(0, 120) : "",
+      foodNote: typeof (rawEntry?.foodNote ?? rawEntry?.mealNote) === "string" ? String(rawEntry?.foodNote ?? rawEntry?.mealNote).slice(0, 120) : "",
+      foodStructureNote: typeof (rawEntry?.foodStructureNote ?? rawEntry?.structuredFoodNote) === "string" ? String(rawEntry?.foodStructureNote ?? rawEntry?.structuredFoodNote).slice(0, 120) : "",
       foodModel: hasStructuredFood ? "structure-v1" : "legacy",
       food: migratedFood,
       foodStructure: migratedFoodStructure,
     habits: {
-      protein: Boolean(rawEntry?.habits?.protein),
-      produce: Boolean(rawEntry?.habits?.produce),
-      stoppedBeforeStuffed: Boolean(rawEntry?.habits?.stoppedBeforeStuffed),
-      movement: Boolean(rawEntry?.habits?.movement),
+      protein: Boolean(sourceHabits?.protein ?? rawEntry?.proteinAtMostMeals),
+      produce: Boolean(sourceHabits?.produce ?? rawEntry?.produceHits),
+      stoppedBeforeStuffed: Boolean(sourceHabits?.stoppedBeforeStuffed ?? rawEntry?.stoppedBeforeStuffed),
+      movement: Boolean(sourceHabits?.movement ?? rawEntry?.movementTargetHit),
     },
   };
 }
@@ -1350,7 +1366,7 @@ async function importJson(event) {
     renderRewardValueVisibility();
     render();
     const inventory = getStateInventory(state);
-    setStatus(`Imported ${inventory.entries} entries, ${inventory.strengthSessions} workouts, ${inventory.rewards} rewards, and ${inventory.storyEvents} story events from ${file.name}.`);
+    setStatus(`Imported ${inventory.entries} entries (${inventory.populatedEntries} populated), ${inventory.weightDays} weight days, ${inventory.bodyFatDays} body-fat days, ${inventory.strengthSessions} workouts, ${inventory.rewards} rewards, and ${inventory.storyEvents} story events from ${file.name}.`);
   } catch (error) {
     setStatus("Import failed. Please choose a valid Health Quest JSON export.");
   } finally {
