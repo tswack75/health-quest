@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.7.5";
+const APP_VERSION = "v4.7.6";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -2250,7 +2250,7 @@ function renderTodayCard(summary) {
                 <input id="today-food-structure-note" type="text" maxlength="120" value="${escapeHtml(today.foodStructureNote || "")}" placeholder="What helped, or what pushed food off track?">
               </label>
             </div>
-          `}
+          ` : ""}
       </div>
       <div class="today-stats">
         ${quickStats.map((item) => `
