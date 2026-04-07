@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.7.0";
+const APP_VERSION = "v4.7.2";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -288,32 +288,66 @@ const activityPanel = document.querySelector(".activity-panel");
 initialize();
 
 function initialize() {
-  appVersion.textContent = APP_VERSION;
-  footerVersion.textContent = `Version ${APP_VERSION}`;
+  if (appVersion) {
+    appVersion.textContent = APP_VERSION;
+  }
+  if (footerVersion) {
+    footerVersion.textContent = `Version ${APP_VERSION}`;
+  }
   hydrateSettingsForm();
   entryDateInput.value = getTodayKey();
   hydrateEntryForm(getSelectedDateKey());
   renderFoodLog();
 
-  saveProfileButton.addEventListener("click", saveProfile);
-  modeToggle.addEventListener("change", handleModeChange);
-  entryDateInput.addEventListener("change", handleDateChange);
-  saveEntryButton.addEventListener("click", saveDailyEntry);
-  addRewardButton.addEventListener("click", addReward);
-  rewardTypeInput.addEventListener("change", renderRewardValueVisibility);
-  exportJsonButton.addEventListener("click", exportJson);
-  exportFoodCsvButton.addEventListener("click", () => exportCsv("food"));
-  exportBodyCsvButton.addEventListener("click", () => exportCsv("body"));
-  exportStrengthCsvButton.addEventListener("click", () => exportCsv("strength"));
-  exportSummaryCsvButton.addEventListener("click", () => exportCsv("summary"));
-  importJsonInput.addEventListener("change", importJson);
-  refreshAppButton.addEventListener("click", forceRefreshApp);
-  closeExerciseHelpButton.addEventListener("click", closeExerciseHelp);
-  exerciseHelpSheet.addEventListener("click", (event) => {
-    if (event.target instanceof HTMLElement && event.target.dataset.helpClose === "true") {
-      closeExerciseHelp();
-    }
-  });
+  if (saveProfileButton) {
+    saveProfileButton.addEventListener("click", saveProfile);
+  }
+  if (modeToggle) {
+    modeToggle.addEventListener("change", handleModeChange);
+  }
+  if (entryDateInput) {
+    entryDateInput.addEventListener("change", handleDateChange);
+  }
+  if (saveEntryButton) {
+    saveEntryButton.addEventListener("click", saveDailyEntry);
+  }
+  if (addRewardButton) {
+    addRewardButton.addEventListener("click", addReward);
+  }
+  if (rewardTypeInput) {
+    rewardTypeInput.addEventListener("change", renderRewardValueVisibility);
+  }
+  if (exportJsonButton) {
+    exportJsonButton.addEventListener("click", exportJson);
+  }
+  if (exportFoodCsvButton) {
+    exportFoodCsvButton.addEventListener("click", () => exportCsv("food"));
+  }
+  if (exportBodyCsvButton) {
+    exportBodyCsvButton.addEventListener("click", () => exportCsv("body"));
+  }
+  if (exportStrengthCsvButton) {
+    exportStrengthCsvButton.addEventListener("click", () => exportCsv("strength"));
+  }
+  if (exportSummaryCsvButton) {
+    exportSummaryCsvButton.addEventListener("click", () => exportCsv("summary"));
+  }
+  if (importJsonInput) {
+    importJsonInput.addEventListener("change", importJson);
+  }
+  if (refreshAppButton) {
+    refreshAppButton.addEventListener("click", forceRefreshApp);
+  }
+  if (closeExerciseHelpButton) {
+    closeExerciseHelpButton.addEventListener("click", closeExerciseHelp);
+  }
+  if (exerciseHelpSheet) {
+    exerciseHelpSheet.addEventListener("click", (event) => {
+      if (event.target instanceof HTMLElement && event.target.dataset.helpClose === "true") {
+        closeExerciseHelp();
+      }
+    });
+  }
   for (const button of tabButtons) {
     button.addEventListener("click", () => setActiveTab(button.dataset.tab));
   }
@@ -353,6 +387,9 @@ function registerServiceWorker() {
 }
 
 function showUpdateBanner(message) {
+  if (!updateBanner || !updateBannerText) {
+    return;
+  }
   updateBannerText.textContent = message;
   updateBanner.classList.remove("is-hidden");
 }
@@ -633,13 +670,27 @@ function saveState() {
 }
 
 function hydrateSettingsForm() {
-  displayNameInput.value = state.settings.displayName;
-  modeToggle.value = state.settings.mode;
-  stepGoalInput.value = state.settings.stepGoal;
-  exerciseGoalInput.value = state.settings.exerciseGoal;
-  weightGoalInput.value = state.settings.weightGoal;
-  bodyFatGoalInput.value = state.settings.bodyFatGoal;
-  lastExportStatus.textContent = formatRelativeExport(state.meta?.lastExportAt);
+  if (displayNameInput) {
+    displayNameInput.value = state.settings.displayName;
+  }
+  if (modeToggle) {
+    modeToggle.value = state.settings.mode;
+  }
+  if (stepGoalInput) {
+    stepGoalInput.value = state.settings.stepGoal;
+  }
+  if (exerciseGoalInput) {
+    exerciseGoalInput.value = state.settings.exerciseGoal;
+  }
+  if (weightGoalInput) {
+    weightGoalInput.value = state.settings.weightGoal;
+  }
+  if (bodyFatGoalInput) {
+    bodyFatGoalInput.value = state.settings.bodyFatGoal;
+  }
+  if (lastExportStatus) {
+    lastExportStatus.textContent = formatRelativeExport(state.meta?.lastExportAt);
+  }
 }
 
 function saveProfile() {
@@ -1034,19 +1085,43 @@ async function importJson(event) {
 
 function render() {
   const summary = computeSummary();
-  renderTodayCard(summary);
-  renderStrengthCard(summary);
-  renderWeeklySummary(summary);
-  renderSignals(summary);
-  renderScorecard(summary);
-  renderProgress(summary);
-  renderCharts(summary);
-  renderRewards(summary);
-  renderStory(summary);
-  renderRecentDays(summary.timelineLogged);
-  lastExportStatus.textContent = formatRelativeExport(state.meta?.lastExportAt);
+  if (todayCard) {
+    renderTodayCard(summary);
+  }
+  if (strengthCard) {
+    renderStrengthCard(summary);
+  }
+  if (summaryStats) {
+    renderWeeklySummary(summary);
+  }
+  if (signalsList && guardrailList) {
+    renderSignals(summary);
+  }
+  if (scorecardCard) {
+    renderScorecard(summary);
+  }
+  if (progressCard) {
+    renderProgress(summary);
+  }
+  if (chartWrap) {
+    renderCharts(summary);
+  }
+  if (rewardList) {
+    renderRewards(summary);
+  }
+  if (storyCard) {
+    renderStory(summary);
+  }
+  if (dayList) {
+    renderRecentDays(summary.timelineLogged);
+  }
+  if (lastExportStatus) {
+    lastExportStatus.textContent = formatRelativeExport(state.meta?.lastExportAt);
+  }
   document.body.classList.toggle("maintenance-mode", state.settings.mode === "maintenance");
-  foodSection.classList.toggle("is-hidden", state.settings.mode === "maintenance");
+  if (foodSection) {
+    foodSection.classList.toggle("is-hidden", state.settings.mode === "maintenance");
+  }
   renderTabState();
 }
 
@@ -3150,5 +3225,7 @@ function escapeHtml(value) {
 }
 
 function setStatus(message) {
-  statusMessage.textContent = message;
+  if (statusMessage) {
+    statusMessage.textContent = message;
+  }
 }
