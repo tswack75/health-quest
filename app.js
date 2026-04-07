@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.8.0";
+const APP_VERSION = "v4.8.1";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -1292,37 +1292,27 @@ async function importJson(event) {
 }
 
 function render() {
-  const summary = computeSummary();
-  if (todayCard) {
-    renderTodayCard(summary);
+  let summary;
+  try {
+    summary = computeSummary();
+  } catch (error) {
+    console.error("Health Quest summary computation failed", error);
+    setStatus("The app hit a loading problem while computing your dashboard. Refresh once; if it persists, export JSON before changing anything.");
+    return;
   }
-  if (strengthCard) {
-    renderStrengthCard(summary);
-  }
-  if (summaryStats) {
-    renderWeeklySummary(summary);
-  }
+
+  renderSection("today", todayCard, () => renderTodayCard(summary));
+  renderSection("strength", strengthCard, () => renderStrengthCard(summary));
+  renderSection("weekly-summary", summaryStats, () => renderWeeklySummary(summary));
   if (signalsList && guardrailList) {
-    renderSignals(summary);
+    renderSection("signals", signalsList, () => renderSignals(summary));
   }
-  if (scorecardCard) {
-    renderScorecard(summary);
-  }
-  if (progressCard) {
-    renderProgress(summary);
-  }
-  if (chartWrap) {
-    renderCharts(summary);
-  }
-  if (rewardList) {
-    renderRewards(summary);
-  }
-  if (storyCard) {
-    renderStory(summary);
-  }
-  if (dayList) {
-    renderRecentDays(summary.timelineLogged);
-  }
+  renderSection("scorecard", scorecardCard, () => renderScorecard(summary));
+  renderSection("progress", progressCard, () => renderProgress(summary));
+  renderSection("charts", chartWrap, () => renderCharts(summary));
+  renderSection("rewards", rewardList, () => renderRewards(summary));
+  renderSection("story", storyCard, () => renderStory(summary));
+  renderSection("recent-days", dayList, () => renderRecentDays(summary.timelineLogged));
   if (lastExportStatus) {
     lastExportStatus.textContent = formatRelativeExport(state.meta?.lastExportAt);
   }
@@ -3946,5 +3936,20 @@ function escapeHtml(value) {
 function setStatus(message) {
   if (statusMessage) {
     statusMessage.textContent = message;
+  }
+}
+
+function renderSection(name, target, callback) {
+  if (!target) {
+    return;
+  }
+  try {
+    callback();
+  } catch (error) {
+    console.error(`Health Quest render failed in ${name}`, error);
+    if ("innerHTML" in target) {
+      target.innerHTML = `<div class="empty-state">This section hit a loading problem. Refresh once; if it persists, export JSON before changing anything.</div>`;
+    }
+    setStatus(`A section failed to render (${name}). The rest of the app is still available.`);
   }
 }

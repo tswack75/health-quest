@@ -45,7 +45,7 @@ If you host this folder somewhere accessible from Safari:
 - Direct Apple HealthKit access requires a native iPhone app. This version is manual-entry by design.
 - Food scoring was updated on April 6, 2026 to a structured five-checkpoint model for new entries going forward. Older food entries remain intact and still appear in history, exports, and trends as legacy data.
 - Service worker install/offline support usually requires HTTP or HTTPS, not `file://`.
-- The installed PWA is versioned for GitHub Pages updates. New builds bump the visible app version, the manifest URL, the CSS/JS asset URLs, and the service-worker cache name so stale app-shell caches are cleared more reliably. This build is `v4.8.0`.
+- The installed PWA is versioned for GitHub Pages updates. New builds bump the visible app version, the manifest URL, the CSS/JS asset URLs, and the service-worker cache name so stale app-shell caches are cleared more reliably. This build is `v4.8.1`.
 - Region thresholds live in `regionThresholds` in [app.js](/C:/Open%20AI%20Codex/health-quest/app.js), and mini-quest XP values live in `miniQuestTemplates` there as well, so later tuning is centralized rather than scattered through render code.
 - The service worker uses a network-first strategy for app-shell files, then falls back to cache if offline.
 - If a new service worker is waiting, the app can show an in-app refresh/update prompt.
