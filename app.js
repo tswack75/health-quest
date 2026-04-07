@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.7.2";
+const APP_VERSION = "v4.7.3";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -497,7 +497,11 @@ function migrateState(parsed, sourceKey) {
   };
 
   if (sourceKey !== STORAGE_KEY) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+    } catch (error) {
+      // Keep the migrated state in memory even if persistence temporarily fails.
+    }
   }
 
   return migrated;
@@ -666,7 +670,12 @@ function normalizeFoodValue(value, sourceVersion = 4) {
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    return true;
+  } catch (error) {
+    return false;
+  }
 }
 
 function hydrateSettingsForm() {
@@ -717,8 +726,8 @@ function handleModeChange() {
 
 function setActiveTab(tab) {
   state.meta.activeTab = tab;
-  saveState();
   renderTabState();
+  saveState();
 }
 
 function renderTabState() {
