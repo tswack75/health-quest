@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.7.4";
+const APP_VERSION = "v4.7.5";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -407,12 +407,11 @@ function forceRefreshApp() {
 function loadState() {
   // Migrate forward from the newest known key first, then older shapes if needed.
   for (const key of [STORAGE_KEY, ...LEGACY_KEYS]) {
-    const raw = localStorage.getItem(key);
-    if (!raw) {
-      continue;
-    }
-
     try {
+      const raw = localStorage.getItem(key);
+      if (!raw) {
+        continue;
+      }
       const parsed = JSON.parse(raw);
       return migrateState(parsed, key);
     } catch (error) {
