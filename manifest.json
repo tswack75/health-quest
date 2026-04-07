@@ -1,8 +1,8 @@
 {
   "name": "Health Quest",
   "short_name": "Health Quest",
-  "id": "health-quest-v4-7-3",
-  "start_url": "./index.html?v=4.7.3",
+  "id": "health-quest-v4-7-4",
+  "start_url": "./index.html?v=4.7.4",
   "display": "standalone",
   "background_color": "#f6efe4",
   "theme_color": "#0d3b66",

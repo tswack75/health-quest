@@ -7,8 +7,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Health Quest</title>
-  <link rel="manifest" href="manifest.json?v=4.7.3">
-  <link rel="stylesheet" href="styles.css?v=4.7.3">
+  <link rel="manifest" href="manifest.json?v=4.7.4">
+  <link rel="stylesheet" href="styles.css?v=4.7.4">
 </head>
 <body>
   <div class="app-shell">
@@ -44,11 +44,11 @@
     </div>
 
     <nav class="tab-bar" aria-label="Primary navigation">
-      <button type="button" class="tab-button active" data-tab="today">Today</button>
-      <button type="button" class="tab-button" data-tab="strength">Strength</button>
-      <button type="button" class="tab-button" data-tab="trends">Trends</button>
-      <button type="button" class="tab-button" data-tab="progress">Progress</button>
-      <button type="button" class="tab-button" data-tab="settings">Settings</button>
+      <button type="button" class="tab-button active" data-tab="today" onclick="setActiveTab('today')">Today</button>
+      <button type="button" class="tab-button" data-tab="strength" onclick="setActiveTab('strength')">Strength</button>
+      <button type="button" class="tab-button" data-tab="trends" onclick="setActiveTab('trends')">Trends</button>
+      <button type="button" class="tab-button" data-tab="progress" onclick="setActiveTab('progress')">Progress</button>
+      <button type="button" class="tab-button" data-tab="settings" onclick="setActiveTab('settings')">Settings</button>
     </nav>
 
     <main class="main-grid">
@@ -247,7 +247,7 @@
     </footer>
   </div>
 
-  <script src="exercise-help.js?v=4.7.3"></script>
-  <script src="app.js?v=4.7.3"></script>
+  <script src="exercise-help.js?v=4.7.4"></script>
+  <script src="app.js?v=4.7.4"></script>
 </body>
 </html>
