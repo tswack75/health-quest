@@ -8,6 +8,7 @@ Health Quest is a local-first iPhone-friendly web app for manual daily health lo
 - Logs exercise minutes manually.
 - Logs weight and body fat percentage manually.
 - Includes structured food logging for new entries using five daily checkpoints, while preserving legacy meal-scale food history.
+- Includes a personalized story engine with daily dispatches, level chapters, region progression, and mini-quests tied to real behavior.
 - Converts those into:
   - A daily score
   - XP and levels
@@ -15,7 +16,7 @@ Health Quest is a local-first iPhone-friendly web app for manual daily health lo
   - Goal bonuses
   - Unlockable custom rewards
 - Shows weight and body-fat trends over time.
-- Includes a lightweight campaign-story layer.
+- Includes a lightweight but persistent campaign-story layer with archive and reward history.
 - Saves everything locally in browser storage.
 - Includes a visible build version and export timestamp.
 - Uses a behavior-weighted scoring model that emphasizes steps, exercise, food structure/control, lighter body-metric bonuses, and now an integrated Strength Quest module.
@@ -44,7 +45,8 @@ If you host this folder somewhere accessible from Safari:
 - Direct Apple HealthKit access requires a native iPhone app. This version is manual-entry by design.
 - Food scoring was updated on April 6, 2026 to a structured five-checkpoint model for new entries going forward. Older food entries remain intact and still appear in history, exports, and trends as legacy data.
 - Service worker install/offline support usually requires HTTP or HTTPS, not `file://`.
-- The installed PWA is versioned for GitHub Pages updates. New builds bump the visible app version, the manifest URL, the CSS/JS asset URLs, and the service-worker cache name so stale app-shell caches are cleared more reliably. This build is `v4.7.6`.
+- The installed PWA is versioned for GitHub Pages updates. New builds bump the visible app version, the manifest URL, the CSS/JS asset URLs, and the service-worker cache name so stale app-shell caches are cleared more reliably. This build is `v4.8.0`.
+- Region thresholds live in `regionThresholds` in [app.js](/C:/Open%20AI%20Codex/health-quest/app.js), and mini-quest XP values live in `miniQuestTemplates` there as well, so later tuning is centralized rather than scattered through render code.
 - The service worker uses a network-first strategy for app-shell files, then falls back to cache if offline.
 - If a new service worker is waiting, the app can show an in-app refresh/update prompt.
 - If the installed PWA still looks old after deploy, open the site in Safari once, then refresh or reopen the installed app.

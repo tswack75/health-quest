@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.7.6";
+const APP_VERSION = "v4.8.0";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -217,6 +217,160 @@ const bossFightLibrary = [
   { key: "maintenance_amnesia", title: "Boss Fight: Maintenance Amnesia", body: "When the system starts working, people forget what made it work. Today's threat is not appetite. It is forgetting the value of routine. The station does not stay strong because it once was repaired." },
 ];
 
+const regionDefinitions = [
+  {
+    id: "unsteady-ground",
+    name: "The Unsteady Ground",
+    phase: "early",
+    focus: "Awareness begins. The terrain is inconsistent, but the map is getting honest.",
+    rewardTitle: "Surveyor",
+  },
+  {
+    id: "stabilization-zone",
+    name: "The Stabilization Zone",
+    phase: "early",
+    focus: "Daily structure starts holding. Fewer slips come from chaos alone.",
+    rewardTitle: "Stabilizer",
+  },
+  {
+    id: "consistency-ridge",
+    name: "The Consistency Ridge",
+    phase: "middle",
+    focus: "Momentum is no longer accidental. Discipline is starting to feel familiar.",
+    rewardTitle: "Pathfinder",
+  },
+  {
+    id: "strength-plateau",
+    name: "The Strength Plateau",
+    phase: "middle",
+    focus: "Training becomes part of the system. Capacity is being rebuilt on purpose.",
+    rewardTitle: "Load-Bearer",
+  },
+  {
+    id: "control-frontier",
+    name: "The Control Frontier",
+    phase: "late",
+    focus: "Control holds in varied conditions. Pressure no longer means automatic drift.",
+    rewardTitle: "Operator",
+  },
+  {
+    id: "command-state",
+    name: "The Command State",
+    phase: "late",
+    focus: "The system is internalized. Refinement matters more than rescue now.",
+    rewardTitle: "Steady Hand",
+  },
+];
+
+const regionThresholds = {
+  stabilizationAvgFood10: 3.5,
+  consistencyStreak: 7,
+  consistencyDays14: 10,
+  consistencyMinFoodScore: 4,
+  strengthPlateauWorkouts14: 6,
+  strengthPlateauAvgFood14: 4,
+  controlFrontierMinDays21: 10,
+  controlFrontierWeekendAvg: 3.8,
+  controlFrontierWeekendGap: 0.6,
+  commandStateMinDays30: 24,
+  commandStateStrongFoodDays30: 24,
+  commandStateWorkouts30: 10,
+};
+
+const miniQuestTemplates = [
+  {
+    id: "hold-the-line",
+    title: "Hold the Line",
+    description: "Maintain structure through the evening and avoid post-dinner drift.",
+    type: "weekend",
+    duration: "1 day",
+    xpReward: 50,
+  },
+  {
+    id: "steady-saturday",
+    title: "Steady Saturday",
+    description: "Keep the weekend from feeling like open terrain. Hold structure all day.",
+    type: "weekend",
+    duration: "1 day",
+    xpReward: 60,
+  },
+  {
+    id: "stop-at-enough",
+    title: "Stop at Enough",
+    description: "Finish dinner under control and keep the line closed afterward.",
+    type: "portion",
+    duration: "1 day",
+    xpReward: 40,
+  },
+  {
+    id: "single-plate-rule",
+    title: "Single Plate Rule",
+    description: "Dinner stays to one plate. No seconds, no drift-by-default.",
+    type: "portion",
+    duration: "1 day",
+    xpReward: 35,
+  },
+  {
+    id: "clean-afternoon",
+    title: "Clean Afternoon",
+    description: "Make the afternoon snack deliberate instead of reactive.",
+    type: "snack",
+    duration: "1 day",
+    xpReward: 35,
+  },
+  {
+    id: "planned-fuel-only",
+    title: "Planned Fuel Only",
+    description: "Only planned snacks count today. No random grazing.",
+    type: "snack",
+    duration: "1 day",
+    xpReward: 45,
+  },
+  {
+    id: "protein-anchor",
+    title: "Protein Anchor",
+    description: "Use breakfast, lunch, and dinner to reinforce protein and structure.",
+    type: "protein",
+    duration: "1 day",
+    xpReward: 60,
+  },
+  {
+    id: "lift-and-fuel",
+    title: "Lift + Fuel",
+    description: "Complete the workout and support it with structured meals.",
+    type: "strength",
+    duration: "1 day",
+    xpReward: 75,
+  },
+  {
+    id: "three-day-chain",
+    title: "Three-Day Chain",
+    description: "Stack three straight days of strong food structure.",
+    type: "consistency",
+    duration: "3 days",
+    xpReward: 125,
+  },
+  {
+    id: "no-drift-day",
+    title: "No Drift Day",
+    description: "A fully structured day. Tight inputs, no late leak.",
+    type: "consistency",
+    duration: "1 day",
+    xpReward: 80,
+  },
+];
+
+const levelRewardTitles = [
+  "Survey Marker",
+  "Bearing Keeper",
+  "Line Holder",
+  "Section Chief",
+  "Quiet Builder",
+  "Load-Bearer",
+  "Systems Captain",
+  "Breakwater Steward",
+];
+
 let state = loadState();
 
 const displayNameInput = document.getElementById("display-name");
@@ -424,7 +578,7 @@ function loadState() {
 
 function createEmptyState() {
   return {
-    version: 6,
+    version: 7,
     settings: { ...defaultSettings },
     strengthSettings: { ...defaultStrengthSettings },
     strengthPlan: JSON.parse(JSON.stringify(defaultStrengthPlan)),
@@ -439,6 +593,12 @@ function createEmptyState() {
       lastClaimedSevenDayAvgWeight: null,
       currentStrengthSession: null,
       activeTab: "today",
+      storyArchiveMode: "summary",
+      currentRegionId: "unsteady-ground",
+      unlockedRegionIds: ["unsteady-ground"],
+      storyArchive: [],
+      storyRewards: [],
+      questCompletions: [],
     },
   };
 }
@@ -482,10 +642,18 @@ function migrateState(parsed, sourceKey) {
     lastClaimedSevenDayAvgWeight: parsed.meta?.lastClaimedSevenDayAvgWeight ?? null,
     currentStrengthSession: migrateStrengthSession(parsed.meta?.currentStrengthSession, strengthPlan),
     activeTab: parsed.meta?.activeTab || "today",
+    storyArchiveMode: parsed.meta?.storyArchiveMode || "summary",
+    currentRegionId: parsed.meta?.currentRegionId || "unsteady-ground",
+    unlockedRegionIds: Array.isArray(parsed.meta?.unlockedRegionIds) && parsed.meta.unlockedRegionIds.length
+      ? parsed.meta.unlockedRegionIds
+      : ["unsteady-ground"],
+    storyArchive: Array.isArray(parsed.meta?.storyArchive) ? parsed.meta.storyArchive : [],
+    storyRewards: Array.isArray(parsed.meta?.storyRewards) ? parsed.meta.storyRewards : [],
+    questCompletions: Array.isArray(parsed.meta?.questCompletions) ? parsed.meta.questCompletions : [],
   };
 
   const migrated = {
-    version: 6,
+    version: 7,
     settings,
     strengthSettings,
     strengthPlan,
@@ -748,6 +916,16 @@ function renderTabState() {
   }
 }
 
+function openStoryArchive(mode = "summary") {
+  state.meta.storyArchiveMode = mode;
+  state.meta.activeTab = "progress";
+  render();
+  saveState();
+  requestAnimationFrame(() => {
+    storyPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
 function handleDateChange() {
   hydrateEntryForm(getSelectedDateKey());
   renderFoodLog();
@@ -830,10 +1008,32 @@ function isStructuredFoodEntry(entry) {
   return (entry?.foodModel || "") === "structure-v1";
 }
 
+function getDateDiffFromToday(dateKey) {
+  const today = new Date(`${getTodayKey()}T12:00:00`);
+  const target = new Date(`${dateKey}T12:00:00`);
+  if (Number.isNaN(today.getTime()) || Number.isNaN(target.getTime())) {
+    return null;
+  }
+  return Math.round((today.getTime() - target.getTime()) / 86400000);
+}
+
+function shouldUseStructuredFoodUI(entry) {
+  if (!entry) {
+    return false;
+  }
+  const recentEditablePastDay = (() => {
+    const diff = getDateDiffFromToday(entry.date);
+    return diff != null && diff >= 0 && diff <= 1;
+  })();
+  return isStructuredFoodEntry(entry) || entry.date >= FOOD_SCORING_UPDATE_DATE || recentEditablePastDay;
+}
+
 function saveDailyEntry() {
   const dateKey = getSelectedDateKey();
   const existing = getEntry(dateKey);
-  const foodModel = existing.foodModel || (dateKey >= FOOD_SCORING_UPDATE_DATE ? "structure-v1" : "legacy");
+  const foodModel = shouldUseStructuredFoodUI(existing) || dateKey >= FOOD_SCORING_UPDATE_DATE
+    ? "structure-v1"
+    : (existing.foodModel || "legacy");
   state.entries[dateKey] = {
     date: dateKey,
     mode: state.settings.mode,
@@ -954,7 +1154,7 @@ function getUnifiedFoodMetric(day) {
 
 function renderFoodLog() {
   const entry = getEntry(getSelectedDateKey());
-  if (isStructuredFoodEntry(entry)) {
+  if (shouldUseStructuredFoodUI(entry)) {
     const preview = scoreFood(entry);
     foodLog.innerHTML = `
       <div class="food-structure-grid">
@@ -1159,12 +1359,12 @@ function computeSummary() {
     nextDay: getNextStrengthDay(getSelectedDateKey()),
     progress: getStrengthProgressSummary(),
   };
+  const region = computeRegionState(loggedEntries, strengthSummary);
   const rewards = state.rewards.map((reward) => ({
     ...reward,
     unlocked: isRewardUnlocked(reward, { level, regularStreak, loggedEntries, weekly }),
   }));
-
-  return {
+  const summary = {
     timelineLogged: loggedEntries,
     timelineFilled,
     totalXp,
@@ -1181,6 +1381,7 @@ function computeSummary() {
     }),
     weekly,
     rewards,
+    region,
     currentChapter: getCurrentChapter(level),
     bossFight: getBossFight({ loggedEntries, weekly, regularStreak, eliteStreak }),
     strength: strengthSummary,
@@ -1188,10 +1389,401 @@ function computeSummary() {
     scorecard: buildWeeklyScorecard(loggedEntries, weekly, strengthSummary),
     progress: buildProgressSummary(loggedEntries, weekly, strengthSummary),
   };
+  const narrativeChanged = syncNarrativeProgress(summary);
+  if (narrativeChanged) {
+    saveState();
+  }
+  summary.storyRewards = state.meta.storyRewards || [];
+  summary.storyArchive = state.meta.storyArchive || [];
+  summary.dailyDispatch = buildDailyDispatch(summary);
+  summary.storySummary = buildStorySummary(summary);
+  return summary;
 }
 
 function getCurrentChapter(level) {
   return [...storyChapters].reverse().find((chapter) => level >= chapter.level) || storyChapters[0];
+}
+
+function hashString(value) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function getRegionById(regionId) {
+  return regionDefinitions.find((region) => region.id === regionId) || regionDefinitions[0];
+}
+
+function getRecentFoodScores(entries, limit = 14) {
+  return entries
+    .filter((day) => day.mode === "full")
+    .slice(-limit)
+    .map((day) => getUnifiedFoodMetric(day))
+    .filter((value) => value != null);
+}
+
+function getFoodSuccessStreak(entries, threshold = 4) {
+  let streak = 0;
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const day = entries[index];
+    if (day.mode !== "full") {
+      continue;
+    }
+    const metric = getUnifiedFoodMetric(day);
+    if (metric == null || metric < threshold) {
+      break;
+    }
+    streak += 1;
+  }
+  return streak;
+}
+
+function computeRegionState(loggedEntries, strengthSummary) {
+  const recent10Food = getRecentFoodScores(loggedEntries, 10);
+  const recent14FoodEntries = loggedEntries.slice(-14).filter((day) => day.mode === "full");
+  const recent14FoodScores = recent14FoodEntries.map((day) => getUnifiedFoodMetric(day)).filter((value) => value != null);
+  const recent21 = loggedEntries.slice(-21).filter((day) => day.mode === "full");
+  const weekends = recent21.filter((day) => {
+    const weekday = new Date(`${day.date}T12:00:00`).getDay();
+    return weekday === 0 || weekday === 6;
+  });
+  const weekdays = recent21.filter((day) => {
+    const weekday = new Date(`${day.date}T12:00:00`).getDay();
+    return weekday >= 1 && weekday <= 5;
+  });
+  const last30 = loggedEntries.slice(-30);
+  const last30FoodStrong = last30.filter((day) => day.mode === "full" && (getUnifiedFoodMetric(day) ?? 0) >= 4).length;
+  const workouts14 = getCompletedStrengthWorkoutsInWindow(14).length;
+  const workouts30 = getCompletedStrengthWorkoutsInWindow(30).length;
+  const avg10Food = average(recent10Food);
+  const avg14Food = average(recent14FoodScores);
+  const weekendAvg = average(weekends.map((day) => getUnifiedFoodMetric(day)).filter((value) => value != null));
+  const weekdayAvg = average(weekdays.map((day) => getUnifiedFoodMetric(day)).filter((value) => value != null));
+  const unlocked = ["unsteady-ground"];
+
+  if (avg10Food != null && avg10Food >= regionThresholds.stabilizationAvgFood10) {
+    unlocked.push("stabilization-zone");
+  }
+  if (
+    getFoodSuccessStreak(loggedEntries, regionThresholds.consistencyMinFoodScore) >= regionThresholds.consistencyStreak ||
+    recent14FoodEntries.filter((day) => (getUnifiedFoodMetric(day) ?? 0) >= regionThresholds.consistencyMinFoodScore).length >= regionThresholds.consistencyDays14
+  ) {
+    unlocked.push("consistency-ridge");
+  }
+  if (workouts14 >= regionThresholds.strengthPlateauWorkouts14 && avg14Food != null && avg14Food >= regionThresholds.strengthPlateauAvgFood14) {
+    unlocked.push("strength-plateau");
+  }
+  if (
+    unlocked.includes("strength-plateau") &&
+    recent21.length >= regionThresholds.controlFrontierMinDays21 &&
+    weekendAvg != null &&
+    weekdayAvg != null &&
+    weekendAvg >= regionThresholds.controlFrontierWeekendAvg &&
+    weekendAvg >= weekdayAvg - regionThresholds.controlFrontierWeekendGap
+  ) {
+    unlocked.push("control-frontier");
+  }
+  if (
+    unlocked.includes("control-frontier") &&
+    last30.length >= regionThresholds.commandStateMinDays30 &&
+    last30FoodStrong >= regionThresholds.commandStateStrongFoodDays30 &&
+    workouts30 >= regionThresholds.commandStateWorkouts30
+  ) {
+    unlocked.push("command-state");
+  }
+
+  const currentRegionId = unlocked[unlocked.length - 1];
+  return {
+    currentRegionId,
+    currentRegion: getRegionById(currentRegionId),
+    unlockedRegionIds: unlocked,
+    metrics: {
+      avg10Food,
+      avg14Food,
+      weekendAvg,
+      weekdayAvg,
+      workouts14,
+      workouts30,
+      last30FoodStrong,
+      foodSuccessStreak: getFoodSuccessStreak(loggedEntries, 4),
+    },
+  };
+}
+
+function buildLevelReward(level) {
+  const rewardTitle = levelRewardTitles[(Math.max(1, level) - 1) % levelRewardTitles.length];
+  return {
+    id: `level-${level}`,
+    type: "level",
+    title: rewardTitle,
+    label: `Level ${level} title unlocked`,
+    detail: rewardTitle,
+  };
+}
+
+function createLevelStoryEvent(level, context) {
+  const region = context.region.currentRegion;
+  const recentLiftCount = context.strengthSummary.progress.workoutsThisWeek.length;
+  const foodTone = (context.weekly.avgFoodScore || 0) >= 4
+    ? "Fuel has been cleaner and more deliberate, which means the system is getting steadier instead of noisier."
+    : "The record shows some drag and some uneven footing, but it also shows follow-through instead of denial.";
+  const liftTone = recentLiftCount >= 2
+    ? "Training is no longer theoretical; it is being folded back into the structure of the week."
+    : "The structure is still being reinforced in a way that respects a real calendar instead of fantasy momentum.";
+  const twistTone = level >= 7 && level < 12
+    ? "This is also the phase where false summits show up. Systems start to work, and the old reflex is to loosen standards early. The campaign gets more interesting here because the weak points become subtler."
+    : level >= 12
+      ? "At this depth, the obvious problems are rarely the main ones. The real friction comes from rationalization, hurry, and the quiet belief that a capable system can tolerate softer edges indefinitely."
+      : "In the early part of the campaign, the map mostly improves through measurement. Later it improves because judgment gets sharper and the structure underneath it gets stronger.";
+  const reward = buildLevelReward(level);
+  return {
+    id: `level-${level}`,
+    type: "level",
+    date: getTodayKey(),
+    title: `Level ${level}: ${reward.title}`,
+    subtitle: `${region.name} milestone`,
+    reward,
+    body: `This level was not granted by one unusually good day. It was assembled the way durable systems are assembled: through repeated inputs, ordinary decisions, and a refusal to confuse friction with failure. ${foodTone} ${liftTone}\n\nWhat matters about this milestone is not that it looks dramatic from the outside. It is that capacity is being rebuilt in a way that can survive a real calendar, real work, and real family obligations. The campaign is starting to resemble an engineered system again: clearer load paths, fewer hidden leaks, better response under stress. That is what earned progress looks like.\n\n${twistTone} The next phase does not ask for heroics. It asks for another stretch of competent days, another run of controlled decisions, another week where the system works because you work it. That is how ground is reclaimed and then held.`,
+  };
+}
+
+function createRegionStoryEvent(region, context) {
+  const regionLines = {
+    "unsteady-ground": "The first phase is less about conquest than about refusing self-deception. The gauges come back online, and the terrain stops being described in wishful terms.",
+    "stabilization-zone": "You are not merely having isolated better days. You are reducing the amount of chaos the system has to absorb.",
+    "consistency-ridge": "The ridge matters because it exposes both range and weather. From here, momentum is visible, but so are the routes by which old habits try to circle back.",
+    "strength-plateau": "Physical capacity is now part of the campaign, not a side note. The structure is being reinforced from underneath, which changes what the whole system can carry.",
+    "control-frontier": "This is the part of the map where weekends, social meals, and fatigue stop being automatic breaches. Control travels farther with you now.",
+    "command-state": "The work has shifted from rescue to stewardship. You are no longer trying to become someone else; you are establishing what reliable operation looks like.",
+  };
+  return {
+    id: `region-${region.id}`,
+    type: "region",
+    date: getTodayKey(),
+    title: region.name,
+    subtitle: "Region entered",
+    reward: {
+      id: `region-reward-${region.id}`,
+      type: "region",
+      title: region.rewardTitle,
+      label: "Region title unlocked",
+      detail: region.rewardTitle,
+    },
+    body: `The terrain has changed because the underlying behavior has changed. ${region.focus} ${regionLines[region.id] || ""}\n\nThis region is not a decorative unlock. It marks a shift in what the system can be trusted to do under ordinary pressure. The map expands when food structure holds without drama, when training shows up on the calendar instead of in the imagination, and when setbacks are treated as terrain rather than verdicts. This is one of those moments.`,
+  };
+}
+
+function syncNarrativeProgress(summary) {
+  let changed = false;
+  const archive = Array.isArray(state.meta.storyArchive) ? [...state.meta.storyArchive] : [];
+  const storyRewards = Array.isArray(state.meta.storyRewards) ? [...state.meta.storyRewards] : [];
+
+  if (!archive.some((item) => item.id === `level-${summary.level}`) && summary.level > 1) {
+    const levelEvent = createLevelStoryEvent(summary.level, summary);
+    archive.unshift(levelEvent);
+    storyRewards.unshift(levelEvent.reward);
+    changed = true;
+  }
+
+  for (const regionId of summary.region.unlockedRegionIds) {
+    if (!archive.some((item) => item.id === `region-${regionId}`)) {
+      const event = createRegionStoryEvent(getRegionById(regionId), summary);
+      archive.unshift(event);
+      storyRewards.unshift(event.reward);
+      changed = true;
+    }
+  }
+
+  const uniqueRewards = [];
+  const seenRewardIds = new Set();
+  for (const reward of storyRewards) {
+    if (!reward || seenRewardIds.has(reward.id)) {
+      continue;
+    }
+    seenRewardIds.add(reward.id);
+    uniqueRewards.push(reward);
+  }
+
+  state.meta.currentRegionId = summary.region.currentRegionId;
+  state.meta.unlockedRegionIds = [...summary.region.unlockedRegionIds];
+  state.meta.storyArchive = archive.slice(0, 40);
+  state.meta.storyRewards = uniqueRewards;
+  return changed;
+}
+
+function getQuestTemplate(questId) {
+  return miniQuestTemplates.find((quest) => quest.id === questId);
+}
+
+function getFoodMetricForQuest(entry) {
+  if (entry.foodModel === "structure-v1") {
+    return entry.foodStructureScore ?? getFoodStructureScore(entry.foodStructure);
+  }
+  const legacyAverage = getLegacyFoodAverage(entry);
+  return legacyAverage == null ? 0 : Math.max(0, 5 - legacyAverage);
+}
+
+function didCompleteStrengthOnDate(dateKey) {
+  const session = getStrengthSessionForDate(dateKey);
+  return Boolean(session?.completed);
+}
+
+function evaluateMiniQuest(template, entry, context) {
+  const foodMetric = getFoodMetricForQuest(entry);
+  const weekday = new Date(`${entry.date}T12:00:00`).getDay();
+  const prior = context.priorEntries || [];
+  switch (template.id) {
+    case "hold-the-line":
+      return weekday === 5 && foodMetric >= 4 && Boolean(entry.foodStructure?.noNightEating);
+    case "steady-saturday":
+      return weekday === 6 && foodMetric >= 4 && Boolean(entry.foodStructure?.noNightEating);
+    case "stop-at-enough":
+      return Boolean(entry.foodStructure?.dinnerPortionControlled) && Boolean(entry.foodStructure?.noNightEating);
+    case "single-plate-rule":
+      return Boolean(entry.foodStructure?.dinnerPortionControlled);
+    case "clean-afternoon":
+      return Boolean(entry.foodStructure?.afternoonSnackControlled);
+    case "planned-fuel-only":
+      return Boolean(entry.foodStructure?.afternoonSnackControlled) && Boolean(entry.foodStructure?.noNightEating);
+    case "protein-anchor":
+      return Boolean(entry.foodStructure?.breakfastControlled) && Boolean(entry.foodStructure?.lunchAnchorMeal) && Boolean(entry.foodStructure?.dinnerPortionControlled);
+    case "lift-and-fuel":
+      return didCompleteStrengthOnDate(entry.date) && foodMetric >= 4;
+    case "three-day-chain": {
+      const recent = [...prior.slice(-2), entry];
+      return recent.length === 3 && recent.every((day) => getFoodMetricForQuest(day) >= 4);
+    }
+    case "no-drift-day":
+      return foodMetric >= 5;
+    default:
+      return false;
+  }
+}
+
+function buildQuestNarrativeLine(completedQuests) {
+  if (!completedQuests.length) {
+    return "";
+  }
+  const lines = [
+    "You held the line where you used to drift.",
+    "Structure carried through pressure today.",
+    "That was controlled, not accidental.",
+    "The terrain changed because the decision held.",
+  ];
+  return lines[completedQuests.length % lines.length];
+}
+
+function selectMiniQuestIds(dateKey, context) {
+  const weekday = new Date(`${dateKey}T12:00:00`).getDay();
+  const recentFood = getRecentFoodScores(context.loggedEntries, 10);
+  const avgFood = average(recentFood) || 0;
+  const recentWorkoutCount = getCompletedStrengthWorkoutsInWindow(7).length;
+  const recentNightDrift = context.loggedEntries.slice(-7).filter((day) => day.foodModel === "structure-v1" && !day.foodStructure?.noNightEating).length;
+  const ids = [];
+
+  if (weekday === 5) {
+    ids.push("hold-the-line");
+  }
+  if (weekday === 6) {
+    ids.push("steady-saturday");
+  }
+  if (isStrengthDay(dateKey)) {
+    ids.push("lift-and-fuel", "protein-anchor");
+  }
+  if (recentNightDrift >= 2) {
+    ids.push("stop-at-enough", "single-plate-rule");
+  }
+  if (avgFood < 4) {
+    ids.push("clean-afternoon", "planned-fuel-only");
+  }
+  if (context.region.currentRegion.phase !== "early") {
+    ids.push("three-day-chain", "no-drift-day");
+  }
+  if (recentWorkoutCount < 2) {
+    ids.push("lift-and-fuel");
+  }
+  ids.push("stop-at-enough", "clean-afternoon", "protein-anchor", "no-drift-day");
+
+  const unique = [];
+  for (const id of ids) {
+    if (!unique.includes(id)) {
+      unique.push(id);
+    }
+  }
+  const seeded = hashString(`${dateKey}-${context.region.currentRegionId}`);
+  return unique.sort((a, b) => (hashString(`${a}-${seeded}`) % 7) - (hashString(`${b}-${seeded}`) % 7)).slice(0, 3);
+}
+
+function getMiniQuestStateForDate(entry, context) {
+  const questIds = selectMiniQuestIds(entry.date, context);
+  const activeQuests = questIds
+    .map((id) => getQuestTemplate(id))
+    .filter(Boolean)
+    .map((template) => {
+      const completed = evaluateMiniQuest(template, entry, context);
+      return {
+        ...template,
+        completed,
+      };
+    });
+  const questXp = activeQuests.filter((quest) => quest.completed).reduce((sum, quest) => sum + quest.xpReward, 0);
+  return {
+    activeQuests,
+    questXp,
+    questNarrative: buildQuestNarrativeLine(activeQuests.filter((quest) => quest.completed)),
+  };
+}
+
+function buildDailyDispatch(summary) {
+  const region = summary.region.currentRegion;
+  const today = summary.today;
+  const liftStatus = summary.strength.status;
+  const streak = summary.regularStreak;
+  const dispatchLabel = "Today's Dispatch";
+  const entryTone = {
+    early: "The work is still about establishing reliable footing and refusing friendly lies from the surface.",
+    middle: "The work is becoming more about rhythm, load paths, and protecting momentum from subtle erosion.",
+    late: "The system is shifting toward refinement and command, where the enemy is softness at the edges rather than obvious collapse.",
+  }[region.phase];
+  const foodLine = today.foodModel === "structure-v1" && (today.foodStructureScore ?? 0) >= 4
+    ? "Food structure is acting like clean fuel today: steady enough to support judgment, training, and recovery."
+    : today.foodModel === "structure-v1" && (today.foodStructureScore ?? 0) <= 2
+      ? "Food inputs show some drift. That does not erase the campaign, but it does distort the readings if left unattended."
+      : "Food is still being shaped into something more stable, less reactive, and better able to hold under a normal life."
+  ;
+  const liftLine = liftStatus === "due"
+    ? "Training is scheduled today, so the assignment is simple: reinforce the structure without chasing theatrics."
+    : liftStatus === "complete"
+      ? "The lifting work is already on the board. Capacity was reinforced before the day had a chance to negotiate it away."
+      : "This is a consolidation day. Use it to protect the gains already made and close easy leaks before they widen.";
+  const streakLine = streak >= 10
+    ? "Momentum is real now, which is exactly when false summits tend to appear and ask for softer standards."
+    : streak >= 4
+      ? "There is enough continuity here to feel the system biting into the ground."
+      : "This is still the stretch where plain follow-through matters more than any dramatic effort.";
+  const seed = hashString(`${summary.today.date}-${region.id}-${summary.level}`);
+  const twistLine = [
+    "One of the recurring lessons of this campaign is that the map changes only after the underlying ground changes.",
+    "Old habits rarely return as open rebellion; they come back disguised as efficiency, reward, or harmless exception.",
+    "The terrain is getting more legible, which means the next obstacles will be subtler, not larger.",
+    "Each steady day narrows the space where drift can hide.",
+  ][seed % 4];
+  const questLine = summary.today.questNarrative || "A smaller targeted objective is enough; the campaign is won through repeatable pieces.";
+  return {
+    label: dispatchLabel,
+    title: `${region.name}`,
+    body: `${entryTone} ${foodLine} ${liftLine} ${streakLine} ${twistLine} ${questLine}`.slice(0, 600),
+  };
+}
+
+function buildStorySummary(summary) {
+  const region = summary.region.currentRegion;
+  const recentArchive = (summary.storyArchive || []).slice(0, 4);
+  const recentTitles = recentArchive.map((item) => item.title).join(", ");
+  const rewardCount = (summary.storyRewards || []).length;
+  return `You are currently operating in ${region.name}, where the focus is ${region.focus.toLowerCase()} Level ${summary.level} reflects accumulated work rather than a burst of effort, and ${rewardCount} campaign markers have been unlocked along the way. Recent milestones include ${recentTitles || "the early survey marks of the campaign"}. The larger arc has moved from measurement and stabilization toward repeatability, physical capacity, and better control under pressure. The system is becoming more trustworthy, and the next gains come from steady judgment rather than intensity.`;
 }
 
 function getDraftEntry() {
@@ -1347,12 +1939,19 @@ function scoreDay(entry, context = {}) {
   const food = scoreFood(entry);
   const habitPoints = scoreHabits(entry);
   const bodyMetrics = scoreBodyMetrics(entry, priorEntries);
+  const provisionalRegion = computeRegionState(priorEntries, { progress: { workoutsThisWeek: [] } });
+  const miniQuestState = dayMode === "full"
+    ? getMiniQuestStateForDate(
+        { ...entry, ...food },
+        { priorEntries, loggedEntries: priorEntries, region: provisionalRegion }
+      )
+    : { activeQuests: [], questXp: 0, questNarrative: "" };
   const rawTotal = stepPoints + exercisePoints + (dayMode === "full" ? food.foodPoints : 0) + bodyMetrics.bodyMetricPoints + habitPoints;
   const scoreCap = dayMode === "full"
     ? 100
     : scoringWeights.steps + scoringWeights.exercise + scoringWeights.bodyMetrics.total + Object.values(scoringWeights.habits).reduce((sum, value) => sum + value, 0);
   const totalScore = Math.round((rawTotal / scoreCap) * 100);
-  const bonusXp = getGoalBonus(entry, food.coreAnsweredCount);
+  const bonusXp = getGoalBonus(entry, food.coreAnsweredCount) + miniQuestState.questXp;
 
   return {
     ...entry,
@@ -1365,6 +1964,9 @@ function scoreDay(entry, context = {}) {
     totalScore,
     dayType: totalScore >= dayThresholds.win ? "win" : totalScore >= dayThresholds.solid ? "solid" : "reset",
     bonusXp,
+    questXp: miniQuestState.questXp,
+    activeQuests: miniQuestState.activeQuests,
+    questNarrative: miniQuestState.questNarrative,
     answeredMeals: mealSlots.filter((slot) => entry.food[slot] !== null),
     ...food,
     ...bodyMetrics,
@@ -2127,7 +2729,7 @@ function renderTodayCard(summary) {
   const selectedDateLabel = formatDisplayDate(getSelectedDateKey());
   const isMaintenance = state.settings.mode === "maintenance";
   const chapter = summary.currentChapter;
-  const showingStructuredFood = !isMaintenance && today.foodModel === "structure-v1";
+  const showingStructuredFood = !isMaintenance && shouldUseStructuredFoodUI(today);
   const structuredFood = readFoodStructureForm(today.foodStructure);
   const structuredPreview = scoreFood({ ...today, foodModel: "structure-v1", foodStructure: structuredFood });
   const focus = getTodayFocus(summary);
@@ -2136,7 +2738,7 @@ function renderTodayCard(summary) {
     { label: "Food", value: getFoodStatusSummary(today) },
     { label: "Strength", value: capitalize(summary.strength.status.replace("_", " ")) },
     { label: "Weight Trend", value: summary.weekly.gapFromBestWeightAverage != null && summary.weekly.gapFromBestWeightAverage <= 0.3 ? "Near best" : summary.weekly.latestWeeklyWeightAverage != null && summary.weekly.priorWeightAverage != null && summary.weekly.latestWeeklyWeightAverage <= summary.weekly.priorWeightAverage ? "Trending down" : "Watch trend" },
-    { label: "Consistency", value: `${summary.regularStreak} day streak` },
+    { label: "Region", value: summary.region.currentRegion.name },
   ];
   const noteMarkup = `
     <label class="quick-field quick-notes">
@@ -2167,15 +2769,41 @@ function renderTodayCard(summary) {
           <div class="chapter-title">${escapeHtml(chapter.title)}</div>
           <div class="chapter-subtitle">${escapeHtml(chapter.subtitle)}</div>
         </div>
+        <div class="dispatch-card">
+          <div class="today-focus-label">${escapeHtml(summary.dailyDispatch.label)}</div>
+          <div class="dispatch-title">${escapeHtml(summary.dailyDispatch.title)}</div>
+          <div class="dispatch-copy">${escapeHtml(summary.dailyDispatch.body)}</div>
+        </div>
         <div class="xp-progress-card">
           <div class="xp-line">Level ${summary.level} | ${summary.totalXp.toLocaleString()} XP total</div>
           <div class="xp-line">Next level at ${summary.nextLevelXp.toLocaleString()} XP</div>
           <div class="xp-line">${summary.xpToNext.toLocaleString()} XP to go</div>
           <div class="xp-progress"><span style="width:${Math.max(0, Math.min(100, ((summary.totalXp - getXpForLevel(summary.level)) / 250) * 100))}%"></span></div>
         </div>
+        <div class="region-inline-card">
+          <div class="today-focus-label">Current Region</div>
+          <div class="dispatch-title">${escapeHtml(summary.region.currentRegion.name)}</div>
+          <div class="dispatch-copy">${escapeHtml(summary.region.currentRegion.focus)}</div>
+        </div>
         <div class="boss-fight-card">
           <div class="boss-title">Boss Fight: ${escapeHtml(summary.bossFight.title)}</div>
           <div class="boss-copy">${escapeHtml(summary.bossFight.body)}</div>
+        </div>
+        <div class="quest-card">
+          <div class="today-focus-label">Active Quests</div>
+          <div class="quest-list">
+            ${(today.activeQuests || []).map((quest) => `
+              <article class="quest-item ${quest.completed ? "completed" : ""}">
+                <div class="quest-row">
+                  <strong>${escapeHtml(quest.title)}</strong>
+                  <span class="quest-xp">+${quest.xpReward} XP</span>
+                </div>
+                <div class="quest-copy">${escapeHtml(quest.description)}</div>
+                <div class="quest-status">${quest.completed ? "Completed" : `Target: ${escapeHtml(quest.duration)}`}</div>
+              </article>
+            `).join("")}
+          </div>
+          ${today.questNarrative ? `<div class="quest-narrative">${escapeHtml(today.questNarrative)}</div>` : ""}
         </div>
         <div class="strength-inline-card">
           <div class="strength-inline-top">
@@ -2563,12 +3191,28 @@ function renderScorecard(summary) {
 function renderProgress(summary) {
   progressCard.innerHTML = `
     <div class="progress-copy">
+      <div class="progress-region-card">
+        <div class="today-focus-label">Current Region</div>
+        <div class="dispatch-title">${escapeHtml(summary.region.currentRegion.name)}</div>
+        <div class="dispatch-copy">${escapeHtml(summary.region.currentRegion.focus)}</div>
+      </div>
       <p>${escapeHtml(summary.progress.workoutSummary)}</p>
       <p>${escapeHtml(summary.progress.liftSummary)}</p>
       <p>${escapeHtml(summary.progress.eatingSummary)}</p>
       <p>${escapeHtml(summary.progress.weightSummary)}</p>
+      <p>${escapeHtml(`Archive status: ${(summary.storyArchive || []).length} campaign entries recorded, from early survey marks to the current region.`)}</p>
+      <div class="story-action-row">
+        <button id="open-story-full" type="button" class="secondary-button">Read Full Story to Date</button>
+        <button id="open-story-summary" type="button" class="secondary-button">Summary to Date</button>
+      </div>
     </div>
   `;
+  document.getElementById("open-story-full")?.addEventListener("click", () => {
+    openStoryArchive("full");
+  });
+  document.getElementById("open-story-summary")?.addEventListener("click", () => {
+    openStoryArchive("summary");
+  });
 }
 
 function getEditableStrengthSession() {
@@ -2687,11 +3331,14 @@ function buildSignals(loggedEntries, weekly, strengthSummary) {
   if (workoutsThisWeek >= 2) {
     signals.push("Strength consistency is improving.");
   }
+  const region = computeRegionState(loggedEntries, strengthSummary).currentRegion;
+  signals.push(`Current region: ${region.name}. ${region.focus}`);
   return signals.slice(0, 5);
 }
 
 function buildWeeklyScorecard(loggedEntries, weekly, strengthSummary) {
   const recentWeek = loggedEntries.slice(-7);
+  const currentRegion = computeRegionState(loggedEntries, strengthSummary).currentRegion;
   const recentBody = recentWeek.filter((day) => day.bodyFat != null);
   const recentWeights = recentWeek.filter((day) => day.weight != null);
   const eatingDays = recentWeek.filter((day) => day.mode === "full" && (day.foodModel === "structure-v1" || day.answeredMeals.length));
@@ -2713,9 +3360,9 @@ function buildWeeklyScorecard(loggedEntries, weekly, strengthSummary) {
     weightChange: recentWeights.length >= 2 ? recentWeights[recentWeights.length - 1].weight - recentWeights[0].weight : null,
     bodyFatChange: recentBody.length >= 2 ? recentBody[recentBody.length - 1].bodyFat - recentBody[0].bodyFat : null,
     consistencyScore,
-    wentWell: strengthSummary.progress.workoutsThisWeek.length >= 3 ? "You completed all planned training." : inControlDays >= 4 ? "Food control held together on most logged days." : "You kept showing up and logging honestly.",
-    slipped: offTrackDays >= 2 ? "Late-day drift showed up more than once." : weekly.avgStepsLogged != null && weekly.avgStepsLogged < state.settings.stepGoal * 0.75 ? "Movement volume fell below target." : "Nothing major slipped, but there is still room to tighten execution.",
-    nextFocus: offTrackDays >= 2 ? "Reduce late-day drift." : strengthSummary.progress.workoutsThisWeek.length < state.strengthSettings.daysPerWeek ? "Finish all scheduled strength sessions." : "Protect consistency and avoid unnecessary extras.",
+    wentWell: strengthSummary.progress.workoutsThisWeek.length >= 3 ? "You completed all planned training and reinforced capacity." : inControlDays >= 4 ? "Food control held together on most logged days." : "You kept the campaign honest by logging and staying engaged.",
+    slipped: offTrackDays >= 2 ? "Late-day drift showed up more than once." : weekly.avgStepsLogged != null && weekly.avgStepsLogged < state.settings.stepGoal * 0.75 ? "Movement volume fell below target." : "Nothing major slipped, but the edges still need guarding.",
+    nextFocus: offTrackDays >= 2 ? "Reduce late-day drift." : strengthSummary.progress.workoutsThisWeek.length < state.strengthSettings.daysPerWeek ? "Finish all scheduled strength sessions." : currentRegion.phase === "early" ? "Keep building repeatable structure." : currentRegion.phase === "middle" ? "Protect rhythm and avoid false summits." : "Refine the system without softening standards.",
   };
 }
 
@@ -3033,27 +3680,48 @@ function getSeriesStats(data, key) {
 }
 
 function renderRewards(summary) {
-  if (!summary.rewards.length) {
-    rewardList.innerHTML = `<div class="empty-state">Add rewards that unlock by level, streak, logged days, or a new lowest 7-day average weight.</div>`;
-    return;
-  }
+  const storyRewardsMarkup = (summary.storyRewards || []).length
+    ? `
+      <div class="reward-subsection">
+        <div class="today-focus-label">Campaign Unlocks</div>
+        ${(summary.storyRewards || []).map((reward) => `
+          <article class="reward-card unlocked story-reward-card">
+            <div>
+              <div class="reward-title">${escapeHtml(reward.title)}</div>
+              <div class="reward-meta">${escapeHtml(reward.label)}</div>
+            </div>
+            <div class="reward-story-detail">${escapeHtml(reward.detail)}</div>
+          </article>
+        `).join("")}
+      </div>
+    `
+    : "";
 
-  rewardList.innerHTML = summary.rewards
-    .map((reward) => `
-      <article class="reward-card ${reward.unlocked ? "unlocked" : "locked"}">
-        <div>
-          <div class="reward-title">${escapeHtml(reward.name)}</div>
-          <div class="reward-meta">${escapeHtml(formatRewardRule(reward))}</div>
-        </div>
-        <button
-          type="button"
-          class="reward-button"
-          data-reward-id="${escapeHtml(reward.id)}"
-          ${reward.unlocked && !reward.claimed ? "" : "disabled"}
-        >${reward.claimed ? "Claimed" : reward.unlocked ? "Claim Reward" : "Locked"}</button>
-      </article>
-    `)
-    .join("");
+  const customRewardsMarkup = summary.rewards.length
+    ? `
+      <div class="reward-subsection">
+        <div class="today-focus-label">Custom Rewards</div>
+        ${summary.rewards
+          .map((reward) => `
+            <article class="reward-card ${reward.unlocked ? "unlocked" : "locked"}">
+              <div>
+                <div class="reward-title">${escapeHtml(reward.name)}</div>
+                <div class="reward-meta">${escapeHtml(formatRewardRule(reward))}</div>
+              </div>
+              <button
+                type="button"
+                class="reward-button"
+                data-reward-id="${escapeHtml(reward.id)}"
+                ${reward.unlocked && !reward.claimed ? "" : "disabled"}
+              >${reward.claimed ? "Claimed" : reward.unlocked ? "Claim Reward" : "Locked"}</button>
+            </article>
+          `)
+          .join("")}
+      </div>
+    `
+    : `<div class="empty-state">Add rewards that unlock by level, streak, logged days, or a new lowest 7-day average weight.</div>`;
+
+  rewardList.innerHTML = `${storyRewardsMarkup}${customRewardsMarkup}`;
 
   for (const button of rewardList.querySelectorAll(".reward-button")) {
     button.addEventListener("click", (event) => toggleRewardClaim(event.currentTarget.dataset.rewardId));
@@ -3062,6 +3730,36 @@ function renderRewards(summary) {
 
 function renderStory(summary) {
   const chapter = summary.currentChapter;
+  const archiveMode = state.meta.storyArchiveMode || "summary";
+  const mapMarkup = `
+    <div class="region-map">
+      ${regionDefinitions.map((region) => `
+        <div class="region-node ${summary.region.unlockedRegionIds.includes(region.id) ? "unlocked" : ""} ${summary.region.currentRegionId === region.id ? "current" : ""}">
+          <div class="region-node-title">${escapeHtml(region.name)}</div>
+          <div class="region-node-meta">${escapeHtml(region.rewardTitle)}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+  const archiveMarkup = archiveMode === "full"
+    ? `
+      <div class="story-archive-list">
+        ${(summary.storyArchive || []).map((event) => `
+          <article class="archive-entry">
+            <div class="story-kicker">${escapeHtml(formatDisplayDate(event.date))}</div>
+            <h4>${escapeHtml(event.title)}</h4>
+            <p><strong>${escapeHtml(event.subtitle)}</strong></p>
+            <p>${escapeHtml(event.body)}</p>
+            ${event.reward ? `<div class="archive-reward">Unlocked: ${escapeHtml(event.reward.title)}</div>` : ""}
+          </article>
+        `).join("")}
+      </div>
+    `
+    : `
+      <div class="story-summary-card">
+        <p>${escapeHtml(summary.storySummary)}</p>
+      </div>
+    `;
   storyCard.innerHTML = `
     <div class="story-kicker">${escapeHtml(campaignMeta.title)}</div>
     <h3>${escapeHtml(chapter.title)}</h3>
@@ -3069,7 +3767,20 @@ function renderStory(summary) {
     <p>${escapeHtml(chapter.body)}</p>
     <p>${escapeHtml(campaignMeta.subtitle)}</p>
     <p>${escapeHtml(campaignMeta.themeLine)}</p>
+    <div class="today-focus-label">Region Map</div>
+    ${mapMarkup}
+    <div class="story-action-row">
+      <button id="story-summary-mode" type="button" class="secondary-button ${archiveMode === "summary" ? "active-story-button" : ""}">Summary to Date</button>
+      <button id="story-full-mode" type="button" class="secondary-button ${archiveMode === "full" ? "active-story-button" : ""}">Read Full Story to Date</button>
+    </div>
+    ${archiveMarkup}
   `;
+  document.getElementById("story-summary-mode")?.addEventListener("click", () => {
+    openStoryArchive("summary");
+  });
+  document.getElementById("story-full-mode")?.addEventListener("click", () => {
+    openStoryArchive("full");
+  });
 }
 
 function renderRecentDays(days) {
