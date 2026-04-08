@@ -31,6 +31,44 @@ const foodStructureItems = [
     helper: "No snacks after dinner cutoff.",
   },
 ];
+const foodStructureLevelOptions = {
+  breakfastControlled: [
+    { value: "strong", label: "Anchored", helper: "Protein-forward and controlled." },
+    { value: "okay", label: "Mostly okay", helper: "A little off, still controlled." },
+    { value: "drift", label: "Sweet / loose", helper: "More drift than anchor." },
+    { value: "off", label: "Overdid it", helper: "Too loose or oversized." },
+  ],
+  lunchAnchorMeal: [
+    { value: "strong", label: "Anchored", helper: "Protein, fiber, portion control." },
+    { value: "okay", label: "Mostly okay", helper: "Decent structure, not perfect." },
+    { value: "drift", label: "Unanchored", helper: "Weak structure or loose portions." },
+    { value: "off", label: "Overdid it", helper: "Clearly off track." },
+  ],
+  afternoonSnackControlled: [
+    { value: "strong", label: "Planned", helper: "Intentional, paired, controlled." },
+    { value: "okay", label: "Okay", helper: "Fine, but not ideal." },
+    { value: "drift", label: "Grazed", helper: "Random or unplanned." },
+    { value: "off", label: "Overdid it", helper: "Snack drift piled up." },
+  ],
+  dinnerPortionControlled: [
+    { value: "strong", label: "Controlled", helper: "One plate, protein, no seconds." },
+    { value: "okay", label: "Mostly okay", helper: "A little heavy, still mostly controlled." },
+    { value: "drift", label: "Overate", helper: "Noticeably too much." },
+    { value: "off", label: "Stuffed", helper: "Well past enough." },
+  ],
+  noNightEating: [
+    { value: "strong", label: "None", helper: "No post-dinner eating." },
+    { value: "okay", label: "Small planned", helper: "Small and controlled." },
+    { value: "drift", label: "Unplanned", helper: "Night eating drifted in." },
+    { value: "off", label: "Late + overdid it", helper: "Late eating plus loss of control." },
+  ],
+};
+const foodStructureLevelWeights = {
+  strong: 1,
+  okay: 0.75,
+  drift: 0.35,
+  off: 0,
+};
 const scoringWeights = {
   steps: 30,
   exercise: 25,
@@ -1078,11 +1116,11 @@ function createEmptyFoodEntry() {
 
 function createEmptyFoodStructure() {
   return {
-    breakfastControlled: false,
-    lunchAnchorMeal: false,
-    afternoonSnackControlled: false,
-    dinnerPortionControlled: false,
-    noNightEating: false,
+    breakfastControlled: null,
+    lunchAnchorMeal: null,
+    afternoonSnackControlled: null,
+    dinnerPortionControlled: null,
+    noNightEating: null,
   };
 }
 
@@ -1150,10 +1188,10 @@ function readFoodStructureForm(fallbackStructure = createEmptyFoodStructure()) {
   const structure = { ...createEmptyFoodStructure(), ...fallbackStructure };
   for (const item of foodStructureItems) {
     const source =
-      document.getElementById(`today-food-structure-${item.key}`) ||
-      document.getElementById(`food-structure-${item.key}`);
+      document.querySelector(`#today-card input[name="today-food-structure-${item.key}"]:checked`) ||
+      document.querySelector(`#food-log input[name="food-structure-${item.key}"]:checked`);
     if (source) {
-      structure[item.key] = Boolean(source.checked);
+      structure[item.key] = source.value;
     }
   }
   return structure;
@@ -1183,6 +1221,33 @@ function renderFoodLog() {
     .join("");
 }
 
+function normalizeFoodStructureLevel(value) {
+  if (value === true) {
+    return "strong";
+  }
+  if (value === false) {
+    return "off";
+  }
+  return value in foodStructureLevelWeights ? value : null;
+}
+
+function getFoodStructureLevelWeight(value) {
+  const normalized = normalizeFoodStructureLevel(value);
+  return normalized == null ? null : (foodStructureLevelWeights[normalized] ?? null);
+}
+
+function isFoodStructureControlled(value) {
+  const weight = getFoodStructureLevelWeight(value);
+  return weight != null && weight >= foodStructureLevelWeights.okay;
+}
+
+function formatFoodStructureScore(score) {
+  if (score == null) {
+    return "--";
+  }
+  return Number.isInteger(score) ? String(score) : score.toFixed(1);
+}
+
 function syncFoodOptionClasses() {
   for (const option of foodLog.querySelectorAll(".food-option")) {
     const input = option.querySelector("input");
@@ -1191,30 +1256,30 @@ function syncFoodOptionClasses() {
 }
 
 function getFoodStructureScore(foodStructure = createEmptyFoodStructure()) {
-  return foodStructureItems.reduce((sum, item) => sum + (foodStructure[item.key] ? 1 : 0), 0);
+  return Number(foodStructureItems.reduce((sum, item) => sum + (getFoodStructureLevelWeight(foodStructure[item.key]) ?? 0), 0).toFixed(2));
 }
 
 function getFoodStructureCoaching(score) {
-  if (score >= 5) {
+  if (score >= 4.5) {
     return "Strong food day. Keep stacking these.";
   }
-  if (score >= 4) {
+  if (score >= 3.5) {
     return "Solid day. One small improvement available.";
   }
-  if (score >= 3) {
+  if (score >= 2.5) {
     return "Acceptable, but there's room to tighten structure.";
   }
   return "Today drifted. Focus on the next meal, not perfection.";
 }
 
 function getFoodStructureRating(score) {
-  if (score >= 5) {
+  if (score >= 4.5) {
     return "excellent day";
   }
-  if (score >= 4) {
+  if (score >= 3.5) {
     return "strong day";
   }
-  if (score >= 3) {
+  if (score >= 2.5) {
     return "acceptable day";
   }
   return "off-track day";
@@ -1241,17 +1306,24 @@ function renderFoodLog() {
     foodLog.innerHTML = `
       <div class="food-structure-grid">
         ${foodStructureItems.map((item) => `
-          <label class="food-structure-item">
-            <input id="food-structure-${item.key}" type="checkbox" ${entry.foodStructure[item.key] ? "checked" : ""}>
+          <div class="food-structure-item">
             <span class="food-structure-copy">
               <strong>${escapeHtml(item.label)}</strong>
               <small>${escapeHtml(item.helper)}</small>
             </span>
-          </label>
+            <div class="food-structure-levels">
+              ${(foodStructureLevelOptions[item.key] || []).map((option) => `
+                <label class="food-level-chip ${normalizeFoodStructureLevel(entry.foodStructure[item.key]) === option.value ? "active" : ""}">
+                  <input type="radio" name="food-structure-${item.key}" value="${option.value}" ${normalizeFoodStructureLevel(entry.foodStructure[item.key]) === option.value ? "checked" : ""}>
+                  <span>${escapeHtml(option.label)}</span>
+                </label>
+              `).join("")}
+            </div>
+          </div>
         `).join("")}
       </div>
       <div class="food-structure-summary">
-        <div class="food-structure-score">Food Structure Score: ${preview.foodStructureScore}/5</div>
+        <div class="food-structure-score">Food Structure Score: ${formatFoodStructureScore(preview.foodStructureScore)}/5</div>
         <div class="food-structure-coaching">${escapeHtml(preview.foodCoachingCopy)}</div>
         <div class="food-structure-hint">Consistent food structure + lifting is the main win.</div>
         <label class="quick-field quick-notes">
@@ -1260,7 +1332,7 @@ function renderFoodLog() {
         </label>
       </div>
     `;
-    for (const input of foodLog.querySelectorAll('input[id^="food-structure-"]')) {
+    for (const input of foodLog.querySelectorAll('input[name^="food-structure-"]')) {
       input.addEventListener("change", () => render());
     }
     const noteInput = document.getElementById("food-structure-note");
@@ -1712,19 +1784,19 @@ function evaluateMiniQuest(template, entry, context) {
   const prior = context.priorEntries || [];
   switch (template.id) {
     case "hold-the-line":
-      return weekday === 5 && foodMetric >= 4 && Boolean(entry.foodStructure?.noNightEating);
+      return weekday === 5 && foodMetric >= 4 && isFoodStructureControlled(entry.foodStructure?.noNightEating);
     case "steady-saturday":
-      return weekday === 6 && foodMetric >= 4 && Boolean(entry.foodStructure?.noNightEating);
+      return weekday === 6 && foodMetric >= 4 && isFoodStructureControlled(entry.foodStructure?.noNightEating);
     case "stop-at-enough":
-      return Boolean(entry.foodStructure?.dinnerPortionControlled) && Boolean(entry.foodStructure?.noNightEating);
+      return isFoodStructureControlled(entry.foodStructure?.dinnerPortionControlled) && isFoodStructureControlled(entry.foodStructure?.noNightEating);
     case "single-plate-rule":
-      return Boolean(entry.foodStructure?.dinnerPortionControlled);
+      return isFoodStructureControlled(entry.foodStructure?.dinnerPortionControlled);
     case "clean-afternoon":
-      return Boolean(entry.foodStructure?.afternoonSnackControlled);
+      return isFoodStructureControlled(entry.foodStructure?.afternoonSnackControlled);
     case "planned-fuel-only":
-      return Boolean(entry.foodStructure?.afternoonSnackControlled) && Boolean(entry.foodStructure?.noNightEating);
+      return isFoodStructureControlled(entry.foodStructure?.afternoonSnackControlled) && isFoodStructureControlled(entry.foodStructure?.noNightEating);
     case "protein-anchor":
-      return Boolean(entry.foodStructure?.breakfastControlled) && Boolean(entry.foodStructure?.lunchAnchorMeal) && Boolean(entry.foodStructure?.dinnerPortionControlled);
+      return isFoodStructureControlled(entry.foodStructure?.breakfastControlled) && isFoodStructureControlled(entry.foodStructure?.lunchAnchorMeal) && isFoodStructureControlled(entry.foodStructure?.dinnerPortionControlled);
     case "lift-and-fuel":
       return didCompleteStrengthOnDate(entry.date) && foodMetric >= 4;
     case "three-day-chain": {
@@ -1756,7 +1828,7 @@ function selectMiniQuestIds(dateKey, context) {
   const recentFood = getRecentFoodScores(context.loggedEntries, 10);
   const avgFood = average(recentFood) || 0;
   const recentWorkoutCount = getCompletedStrengthWorkoutsInWindow(7).length;
-  const recentNightDrift = context.loggedEntries.slice(-7).filter((day) => day.foodModel === "structure-v1" && !day.foodStructure?.noNightEating).length;
+  const recentNightDrift = context.loggedEntries.slice(-7).filter((day) => day.foodModel === "structure-v1" && !isFoodStructureControlled(day.foodStructure?.noNightEating)).length;
   const ids = [];
 
   if (weekday === 5) {
@@ -1898,15 +1970,16 @@ function scoreFood(entry) {
     const foodStructure = { ...createEmptyFoodStructure(), ...(entry.foodStructure || {}) };
     const foodStructureScore = getFoodStructureScore(foodStructure);
     const foodPoints = Math.round((foodStructureScore / foodStructureItems.length) * scoringWeights.food.total);
+    const answeredCheckpoints = foodStructureItems.filter((item) => normalizeFoodStructureLevel(foodStructure[item.key]) != null).length;
     return {
       foodModel: "structure-v1",
       foodPoints,
       foodStructureScore,
       foodCoachingCopy: getFoodStructureCoaching(foodStructureScore),
       foodStructureRating: getFoodStructureRating(foodStructureScore),
-      foodIsProvisional: false,
-      coreAnsweredCount: foodStructureScore,
-      answeredCheckpoints: foodStructureItems.filter((item) => foodStructure[item.key]).length,
+      foodIsProvisional: answeredCheckpoints < foodStructureItems.length,
+      coreAnsweredCount: answeredCheckpoints,
+      answeredCheckpoints,
     };
   }
 
@@ -2806,7 +2879,7 @@ function renderExerciseDemoMedia(entry) {
 
 function getTodayBreakdownNote(day) {
   if (shouldHideCurrentDayScore(day)) {
-    return "Today's score will appear after the day is complete so the trend stays honest.";
+    return "Today's score is still accumulating. It stays out of the trend line until the day is complete.";
   }
   if (day.foodIsProvisional) {
     return "Some of today's score is still provisional because the day is not fully logged.";
@@ -2834,7 +2907,7 @@ function renderTodayCard(summary) {
   const today = summary.today;
   const selectedDateLabel = formatDisplayDate(getSelectedDateKey());
   const isMaintenance = state.settings.mode === "maintenance";
-  const hideCurrentDayScore = shouldHideCurrentDayScore(today);
+  const isCurrentDay = shouldHideCurrentDayScore(today);
   const chapter = summary.currentChapter;
   const showingStructuredFood = !isMaintenance && shouldUseStructuredFoodUI(today);
   const structuredFood = readFoodStructureForm(today.foodStructure);
@@ -2859,8 +2932,8 @@ function renderTodayCard(summary) {
     <div class="today-grid">
       <div class="today-main">
         <div class="today-kicker">${escapeHtml(selectedDateLabel)}</div>
-        <div class="today-score">${hideCurrentDayScore ? "—" : today.totalScore}</div>
-        <div class="today-copy">${hideCurrentDayScore ? "Today's score stays hidden until the day is complete so partial logging doesn't distort the read." : "Win day at 75+. Solid day at 55-74. Regular streak survives solid days; elite streak needs wins."}</div>
+        <div class="today-score">${today.totalScore}</div>
+        <div class="today-copy">${isCurrentDay ? "Score so far. Today's total updates here, but it stays out of trend charts until the day is complete." : "Win day at 75+. Solid day at 55-74. Regular streak survives solid days; elite streak needs wins."}</div>
         <div class="today-focus">
           <div class="today-focus-label">Today's Focus</div>
           <div class="today-focus-copy">${escapeHtml(focus)}</div>
@@ -2965,17 +3038,24 @@ function renderTodayCard(summary) {
               </div>
               <div class="food-structure-grid compact">
                 ${foodStructureItems.map((item) => `
-                  <label class="food-structure-item compact">
-                    <input id="today-food-structure-${item.key}" type="checkbox" ${structuredFood[item.key] ? "checked" : ""}>
+                  <div class="food-structure-item compact">
                     <span class="food-structure-copy">
                       <strong>${escapeHtml(item.label)}</strong>
                       <small>${escapeHtml(item.helper)}</small>
                     </span>
-                  </label>
+                    <div class="food-structure-levels compact">
+                      ${(foodStructureLevelOptions[item.key] || []).map((option) => `
+                        <label class="food-level-chip ${normalizeFoodStructureLevel(structuredFood[item.key]) === option.value ? "active" : ""}">
+                          <input type="radio" name="today-food-structure-${item.key}" value="${option.value}" ${normalizeFoodStructureLevel(structuredFood[item.key]) === option.value ? "checked" : ""}>
+                          <span>${escapeHtml(option.label)}</span>
+                        </label>
+                      `).join("")}
+                    </div>
+                  </div>
                 `).join("")}
               </div>
               <div class="food-structure-summary compact">
-                <div class="food-structure-score">Food Structure Score: ${structuredPreview.foodStructureScore}/5</div>
+                <div class="food-structure-score">Food Structure Score: ${formatFoodStructureScore(structuredPreview.foodStructureScore)}/5</div>
                 <div class="food-structure-rating">${escapeHtml(structuredPreview.foodStructureRating)}</div>
                 <div class="food-structure-coaching">${escapeHtml(structuredPreview.foodCoachingCopy)}</div>
                 <div class="food-structure-hint">Protein-forward meals support lifting recovery.</div>
@@ -2998,7 +3078,7 @@ function renderTodayCard(summary) {
       <div class="today-breakdown ${isMaintenance ? "is-hidden" : ""}">
         <div class="score-row"><span>Steps</span><span>${today.stepPoints}/${scoringWeights.steps}</span></div>
         <div class="score-row"><span>Exercise</span><span>${today.exercisePoints}/${scoringWeights.exercise}</span></div>
-        ${today.mode === "full" ? `<div class="score-row"><span>${today.foodModel === "structure-v1" ? "Food Structure" : "Legacy Food"}</span><span>${today.foodModel === "structure-v1" ? `${today.foodStructureScore || 0}/5` : `${today.foodPoints}/${scoringWeights.food.total}`}</span></div>` : ""}
+        ${today.mode === "full" ? `<div class="score-row"><span>${today.foodModel === "structure-v1" ? "Food Structure" : "Legacy Food"}</span><span>${today.foodModel === "structure-v1" ? `${formatFoodStructureScore(today.foodStructureScore || 0)}/5` : `${today.foodPoints}/${scoringWeights.food.total}`}</span></div>` : ""}
         <div class="score-row"><span>Body metrics</span><span>${today.bodyMetricPoints}/${scoringWeights.bodyMetrics.total}</span></div>
         <div class="score-row"><span>Habits</span><span>${today.habitPoints}/${Object.values(scoringWeights.habits).reduce((sum, value) => sum + value, 0)}</span></div>
         <div class="today-breakdown-note">${escapeHtml(getTodayBreakdownNote(today))}</div>
@@ -3033,7 +3113,7 @@ function wireTodayQuickInputs() {
 }
 
 function wireTodayMealInputs() {
-  for (const input of todayCard.querySelectorAll('input[id^="today-food-structure-"]')) {
+  for (const input of todayCard.querySelectorAll('input[name^="today-food-structure-"]')) {
     input.addEventListener("change", () => {
       render();
     });
@@ -4074,3 +4154,4 @@ function renderSection(name, target, callback) {
     setStatus(`A section failed to render (${name}). The rest of the app is still available.`);
   }
 }
+
