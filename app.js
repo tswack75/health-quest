@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.8.6";
+const APP_VERSION = "v4.8.7";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -2424,9 +2424,32 @@ function getLastIncreaseMarker(name) {
   return null;
 }
 
+function getPendingIncreaseReminder(name, currentDateKey = getSelectedDateKey()) {
+  for (let index = state.strengthHistory.length - 1; index >= 0; index -= 1) {
+    const session = state.strengthHistory[index];
+    const exercise = session.exercises?.find((item) => item.name === name);
+    if (!exercise) {
+      continue;
+    }
+    if (!exercise.increaseNextTime) {
+      return null;
+    }
+    if (session.date >= currentDateKey) {
+      return null;
+    }
+    const lastWeight = exercise.actualSets?.find((set) => set.weight)?.weight || "";
+    return {
+      session,
+      exercise,
+      lastWeight,
+    };
+  }
+  return null;
+}
+
 function getExerciseProgressionSuggestion(exercise) {
   const previous = getLastExercisePerformance(exercise.name);
-  const increaseMarker = getLastIncreaseMarker(exercise.name);
+  const increaseMarker = getPendingIncreaseReminder(exercise.name);
   if (increaseMarker) {
     return "Marked to increase from last time. Consider adding 1 rep or a small weight bump if form stays solid.";
   }
@@ -2782,6 +2805,9 @@ function renderExerciseDemoMedia(entry) {
 }
 
 function getTodayBreakdownNote(day) {
+  if (shouldHideCurrentDayScore(day)) {
+    return "Today's score will appear after the day is complete so the trend stays honest.";
+  }
   if (day.foodIsProvisional) {
     return "Some of today's score is still provisional because the day is not fully logged.";
   }
@@ -2800,10 +2826,15 @@ function getTodayBreakdownNote(day) {
   return "Today's score is being carried by steady reps more than by measurement alone.";
 }
 
+function shouldHideCurrentDayScore(day) {
+  return Boolean(day?.date && day.date === getTodayKey());
+}
+
 function renderTodayCard(summary) {
   const today = summary.today;
   const selectedDateLabel = formatDisplayDate(getSelectedDateKey());
   const isMaintenance = state.settings.mode === "maintenance";
+  const hideCurrentDayScore = shouldHideCurrentDayScore(today);
   const chapter = summary.currentChapter;
   const showingStructuredFood = !isMaintenance && shouldUseStructuredFoodUI(today);
   const structuredFood = readFoodStructureForm(today.foodStructure);
@@ -2828,8 +2859,8 @@ function renderTodayCard(summary) {
     <div class="today-grid">
       <div class="today-main">
         <div class="today-kicker">${escapeHtml(selectedDateLabel)}</div>
-        <div class="today-score">${today.totalScore}</div>
-        <div class="today-copy">Win day at 75+. Solid day at 55-74. Regular streak survives solid days; elite streak needs wins.</div>
+        <div class="today-score">${hideCurrentDayScore ? "—" : today.totalScore}</div>
+        <div class="today-copy">${hideCurrentDayScore ? "Today's score stays hidden until the day is complete so partial logging doesn't distort the read." : "Win day at 75+. Solid day at 55-74. Regular streak survives solid days; elite streak needs wins."}</div>
         <div class="today-focus">
           <div class="today-focus-label">Today's Focus</div>
           <div class="today-focus-copy">${escapeHtml(focus)}</div>
@@ -3149,11 +3180,15 @@ function renderStrengthCard(summary) {
             const helpEntry = getExerciseHelpEntry(exercise.helpSlug || exercise.name);
             const alternateEntry = exercise.alternateHelpSlug ? getExerciseHelpEntry(exercise.alternateHelpSlug) : null;
             const starter = getExerciseStartingGuidance(exercise);
-            const increaseMarker = getLastIncreaseMarker(exercise.name);
+            const increaseMarker = getPendingIncreaseReminder(exercise.name, dateKey);
             return `
         <article class="strength-exercise">
           <div class="strength-exercise-top">
             <div>
+              ${increaseMarker ? `
+                <div class="strength-flag-badge">Marked to increase from last time</div>
+                <div class="strength-exercise-meta">Last weight used: ${escapeHtml(String(increaseMarker.lastWeight || "bodyweight / same setup"))}</div>
+              ` : ""}
               <div class="strength-exercise-name">${escapeHtml(exercise.name)}</div>
               <div class="strength-exercise-meta">${escapeHtml(helpEntry?.description || "Simple full-body strength work.")}</div>
               ${helpEntry?.primaryCue ? `<div class="strength-primary-cue">${escapeHtml(helpEntry.primaryCue)}</div>` : ""}
@@ -3169,7 +3204,7 @@ function renderStrengthCard(summary) {
               ${!last ? `<div class="strength-starting-meta">${escapeHtml(starter.summaryText)}</div>` : ""}
               ${!last && helpEntry?.recommendedStartingNote ? `<div class="strength-exercise-meta">${escapeHtml(helpEntry.recommendedStartingNote)}</div>` : ""}
               ${!last && helpEntry?.backSensitivityNote ? `<div class="strength-safety-note">${escapeHtml(helpEntry.backSensitivityNote)}</div>` : ""}
-              ${increaseMarker ? `<div class="strength-increase-reminder">Marked to increase from last time</div>` : ""}
+              ${increaseMarker ? `<div class="strength-increase-reminder">Marked to increase from last time. Consider a small bump if form still feels solid.</div>` : ""}
               <div class="strength-exercise-meta">${escapeHtml(getExerciseProgressionSuggestion(exercise))}</div>
             </div>
           </div>
@@ -3537,7 +3572,7 @@ function exportCsv(type) {
 function renderCharts(summary) {
   const weightDays = summary.timelineLogged.filter((day) => day.weight != null);
   const bodyFatDays = summary.timelineLogged.filter((day) => day.bodyFat != null);
-  const scoreDays = summary.timelineLogged;
+  const scoreDays = summary.timelineLogged.filter((day) => day.date < getTodayKey());
 
   chartWrap.innerHTML = `
     ${renderLineChart("Weight", weightDays, "weight", state.settings.weightGoal, buildRollingAverageSeries(weightDays, "weight"))}
