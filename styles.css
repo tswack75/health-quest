@@ -610,6 +610,55 @@ button,
   gap: 4px;
 }
 
+.meal-behavior-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.meal-behavior-grid.compact {
+  gap: 8px;
+}
+
+.meal-behavior-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(13, 59, 102, 0.05);
+  min-width: 0;
+}
+
+.meal-behavior-card.compact {
+  padding: 10px 12px;
+}
+
+.meal-behavior-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.meal-behavior-copy small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.meal-score-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.meal-score-options.compact {
+  gap: 6px;
+}
+
+.meal-flag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
 .food-structure-score {
   font-weight: 800;
   color: var(--brand);
