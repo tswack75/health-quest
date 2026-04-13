@@ -1211,6 +1211,50 @@ button,
   gap: 14px;
 }
 
+.today-grid.compact-dashboard {
+  grid-template-columns: 1fr;
+}
+
+.today-main.full-width {
+  display: grid;
+  gap: 14px;
+}
+
+.today-header-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.today-date-label {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.today-score-badge {
+  display: grid;
+  gap: 4px;
+  min-width: 110px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(13, 59, 102, 0.07);
+  text-align: right;
+}
+
+.today-score-badge span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.today-score-badge strong {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
 .strength-hero,
 .strength-exercise,
 .scorecard-stat,
@@ -1244,6 +1288,85 @@ button,
 
 .scorecard-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.progress-card-grid,
+.momentum-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.progress-stat-card,
+.momentum-card,
+.milestone-item {
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+}
+
+.progress-stat-card {
+  display: grid;
+  gap: 4px;
+}
+
+.progress-stat-card strong {
+  font-size: 1.2rem;
+  color: var(--ink);
+}
+
+.progress-stat-card span,
+.momentum-stat-row span,
+.milestone-item span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.momentum-card {
+  display: grid;
+  gap: 10px;
+}
+
+.momentum-card.compact {
+  text-align: center;
+  gap: 6px;
+}
+
+.momentum-card.compact strong {
+  font-size: 1.5rem;
+}
+
+.scoreboard-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.momentum-stat-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.milestone-list {
+  display: grid;
+  gap: 10px;
+}
+
+.milestone-item {
+  display: grid;
+  gap: 6px;
+}
+
+.milestone-item.unlocked {
+  border-color: rgba(42, 157, 143, 0.35);
+  background: rgba(42, 157, 143, 0.08);
+}
+
+.progress-inline-list {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
 }
 
 .strength-exercise-top {
@@ -1311,6 +1434,77 @@ button,
   color: var(--ink);
   font-weight: 700;
   margin-top: 4px;
+}
+
+.optional-finisher-card {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(13, 59, 102, 0.04);
+  display: grid;
+  gap: 10px;
+}
+
+.optional-finisher-card > summary,
+.strength-reason-details > summary,
+.momentum-extra > summary {
+  cursor: pointer;
+  font-weight: 800;
+  list-style: none;
+}
+
+.optional-finisher-card > summary::-webkit-details-marker,
+.strength-reason-details > summary::-webkit-details-marker,
+.momentum-extra > summary::-webkit-details-marker {
+  display: none;
+}
+
+.finisher-list {
+  display: grid;
+  gap: 10px;
+}
+
+.finisher-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+}
+
+.finisher-item small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.finisher-item.completed {
+  border-color: rgba(42, 157, 143, 0.35);
+  background: rgba(42, 157, 143, 0.08);
+}
+
+.strength-status-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(13, 59, 102, 0.04);
+}
+
+.strength-status-card.compact {
+  padding: 12px;
+}
+
+.strength-reason-details,
+.momentum-extra {
+  display: grid;
+  gap: 8px;
 }
 
 .strength-increase-toggle {
@@ -1577,8 +1771,20 @@ body.maintenance-mode .today-breakdown {
   }
 
   .strength-hero,
-  .strength-set-row {
+  .strength-set-row,
+  .progress-card-grid,
+  .momentum-grid,
+  .scoreboard-grid {
     grid-template-columns: 1fr;
+  }
+
+  .today-header-row {
+    flex-direction: column;
+  }
+
+  .today-score-badge {
+    width: 100%;
+    text-align: left;
   }
 
   .strength-inline-top {

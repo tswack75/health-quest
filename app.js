@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.9.0";
+const APP_VERSION = "v4.11.0";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -265,6 +265,53 @@ const defaultStrengthPlan = {
           helpSlug: "plank",
           alternateHelpSlug: "dead-bug",
         },
+      ],
+    },
+  ],
+  awayWorkout: {
+    id: "away-maintenance",
+    name: "Away from the Gym",
+    exercises: [
+      { name: "Incline Push-Ups", sets: 2, reps: "8-15" },
+      { name: "Split Squat", sets: 2, reps: "8-10 / side" },
+      { name: "Glute Bridge", sets: 2, reps: "10-15" },
+      { name: "Dead Bug", sets: 2, reps: "6 / side" },
+    ],
+  },
+  optionalFinishers: [
+    {
+      id: "chest-finisher",
+      name: "Chest Finisher",
+      focus: "chest",
+      exercises: [
+        { name: "Incline Push-Ups", sets: 2, reps: "8-15", optional: true },
+      ],
+    },
+    {
+      id: "shoulder-finisher",
+      name: "Shoulder Finisher",
+      focus: "shoulders",
+      exercises: [
+        { name: "Light Dumbbell Shoulder Press", sets: 2, reps: "8-12", optional: true },
+      ],
+    },
+    {
+      id: "arms-finisher",
+      name: "Arms Finisher",
+      focus: "arms",
+      exercises: [
+        { name: "Dumbbell Curl", sets: 2, reps: "10-12", optional: true },
+        { name: "Overhead Dumbbell Triceps Extension", sets: 2, reps: "10-12", optional: true },
+      ],
+    },
+    {
+      id: "summer-combo",
+      name: "Optional Combo Finisher",
+      focus: "summer look",
+      exercises: [
+        { name: "Incline Push-Ups", sets: 2, reps: "8-15", optional: true },
+        { name: "Dumbbell Curl", sets: 2, reps: "10-12", optional: true },
+        { name: "Light Dumbbell Shoulder Press", sets: 2, reps: "8-12", optional: true },
       ],
     },
   ],
@@ -983,7 +1030,14 @@ function migrateStrengthSession(session, strengthPlan = defaultStrengthPlan) {
     workoutScore: session.workoutScore == null ? null : Number(session.workoutScore),
     workoutScoreOverride: session.workoutScoreOverride == null ? null : Number(session.workoutScoreOverride),
     backSensitivity: Boolean(session.backSensitivity),
+    awayWorkoutCompleted: Boolean(session.awayWorkoutCompleted),
+    unableToTrain: Boolean(session.unableToTrain),
+    unableReason: typeof session.unableReason === "string" ? session.unableReason.slice(0, 120) : "",
     note: typeof session.note === "string" ? session.note.slice(0, 160) : "",
+    optionalFinishers: Array.isArray(session.optionalFinishers) ? session.optionalFinishers.map((finisher) => ({
+      id: finisher.id,
+      completed: Boolean(finisher.completed),
+    })) : [],
     exercises: workout.exercises.map((exercise) => {
       const prior = exerciseMap.get(exercise.name) || exerciseMap.get(exerciseAliases[exercise.name]) || {};
       return {
@@ -1733,6 +1787,7 @@ function computeSummary() {
     ...reward,
     unlocked: isRewardUnlocked(reward, { level, regularStreak, loggedEntries, weekly }),
   }));
+  const momentum = computeMomentumSummary(loggedEntries, weekly, strengthSummary);
   const summary = {
     timelineLogged: xpTimeline,
     timelineFilled,
@@ -1754,9 +1809,10 @@ function computeSummary() {
     currentChapter: getCurrentChapter(level),
     bossFight: getBossFight({ loggedEntries, weekly, regularStreak, eliteStreak }),
     strength: strengthSummary,
+    momentum,
     signals: buildSignals(loggedEntries, weekly, strengthSummary),
     scorecard: buildWeeklyScorecard(loggedEntries, weekly, strengthSummary),
-    progress: buildProgressSummary(loggedEntries, weekly, strengthSummary),
+    progress: buildProgressSummary(loggedEntries, weekly, strengthSummary, momentum),
   };
   const narrativeChanged = syncNarrativeProgress(summary);
   if (narrativeChanged) {
@@ -2375,6 +2431,12 @@ function scoreBodyMetrics(entry, priorEntries = []) {
 function getStrengthDayScore(entry) {
   const session = getStrengthSessionForDate(entry.date);
   const due = isStrengthDay(entry.date);
+  if (session?.unableToTrain) {
+    return 70;
+  }
+  if (session?.awayWorkoutCompleted) {
+    return 80;
+  }
   if (session?.completed) {
     return 100;
   }
@@ -2476,6 +2538,7 @@ function getGoalBonus(entry, food) {
   if (getStrengthSessionForDate(entry.date)?.completed) {
     bonus += xpRules.workoutCompleted;
   }
+  bonus += Number(getStrengthSessionForDate(entry.date)?.finisherBonusXp || 0);
   if ((entry.dailyHealthScore ?? 0) >= 80) {
     bonus += xpRules.highHealthScore;
   }
@@ -2988,6 +3051,13 @@ function createStrengthSession(dateKey) {
     durationMinutes: state.strengthSettings.defaultWorkoutDuration,
     completed: false,
     backSensitivity: false,
+    awayWorkoutCompleted: false,
+    unableToTrain: false,
+    unableReason: "",
+    optionalFinishers: (state.strengthPlan.optionalFinishers || []).map((finisher) => ({
+      id: finisher.id,
+      completed: false,
+    })),
     exercises: workout.exercises.map((exercise) => {
       const last = getLastExercisePerformance(exercise.name);
       const lastWeight = last?.exercise?.actualSets?.find((set) => set.weight)?.weight || "";
@@ -3021,7 +3091,7 @@ function getCompletedStrengthWorkoutsInWindow(days = 7) {
   start.setDate(start.getDate() - (days - 1));
   return state.strengthHistory.filter((session) => {
     const date = new Date(`${session.date}T12:00:00`);
-    return session.completed && date >= start && date <= end;
+    return (session.completed || session.awayWorkoutCompleted) && date >= start && date <= end;
   });
 }
 
@@ -3055,8 +3125,18 @@ function getStrengthProgressSummary() {
   };
 }
 
+function getOptionalFinisherDefinitions() {
+  return state.strengthPlan?.optionalFinishers || defaultStrengthPlan.optionalFinishers || [];
+}
+
 function getStrengthStatus(dateKey) {
   const session = getStrengthSessionForDate(dateKey);
+  if (session?.unableToTrain) {
+    return "unable";
+  }
+  if (session?.awayWorkoutCompleted) {
+    return "away_complete";
+  }
   if (session?.completed) {
     return "complete";
   }
@@ -3070,12 +3150,18 @@ function getTodayFocus(summary) {
   const dateKey = getSelectedDateKey();
   const liftStatus = getStrengthStatus(dateKey);
   if (liftStatus === "due") {
-    return "Stay on track with food and complete your strength workout.";
+    return "Log the day and finish the base workout if it's due.";
   }
   if (liftStatus === "in_progress") {
-    return "Finish your workout cleanly and keep food control steady late.";
+    return "Finish the workout cleanly and save the day.";
   }
-  return "Recovery day: stay steady with food, movement, and trend-aware decisions.";
+  if (liftStatus === "away_complete") {
+    return "Away workout logged. Keep food and habits steady.";
+  }
+  if (liftStatus === "unable") {
+    return "Training was acknowledged. Keep the rest of the day clean and honest.";
+  }
+  return "Keep the day simple: food, habits, movement, save.";
 }
 
 function getKeyActions(summary) {
@@ -3164,6 +3250,12 @@ function getStrengthPrimaryAction(summary) {
   }
   if (status === "due") {
     return { label: "Start Workout", detail: "Today's session is ready.", mode: "start" };
+  }
+  if (status === "away_complete") {
+    return { label: "Review Strength", detail: "Away workout logged.", mode: "review" };
+  }
+  if (status === "unable") {
+    return { label: "Open Strength", detail: "Training was acknowledged for today.", mode: "open" };
   }
   if (status === "complete") {
     return { label: "Review Workout", detail: "See today's logged session.", mode: "review" };
@@ -3340,100 +3432,56 @@ function renderTodayCard(summary) {
   const today = summary.today;
   const selectedDateLabel = formatDisplayDate(getSelectedDateKey());
   const isMaintenance = state.settings.mode === "maintenance";
-  const isCurrentDay = shouldHideCurrentDayScore(today);
-  const chapter = summary.currentChapter;
   const showingMealBehavior = !isMaintenance && shouldUseMealV2UI(today);
   const showingStructuredFood = !isMaintenance && !showingMealBehavior && shouldUseStructuredFoodUI(today);
   const mealBehavior = readMealBehaviorForm(today.mealBehavior);
   const mealBehaviorPreview = scoreFood({ ...today, foodModel: "meal-v2", mealBehavior });
   const structuredFood = readFoodStructureForm(today.foodStructure);
   const structuredPreview = scoreFood({ ...today, foodModel: "structure-v1", foodStructure: structuredFood });
-  const focus = getTodayFocus(summary);
-  const keyActions = getKeyActions(summary);
-  const quickStats = [
-    { label: "Strength", value: capitalize(summary.strength.status.replace("_", " ")) },
-    { label: "Weight Trend", value: summary.weekly.gapFromBestWeightAverage != null && summary.weekly.gapFromBestWeightAverage <= 0.3 ? "Near best" : summary.weekly.latestWeeklyWeightAverage != null && summary.weekly.priorWeightAverage != null && summary.weekly.latestWeeklyWeightAverage <= summary.weekly.priorWeightAverage ? "Trending down" : "Watch trend" },
-    { label: "Food", value: getFoodStatusSummary(today) },
-  ];
+  const strengthAction = getStrengthPrimaryAction(summary);
+  const strengthStatusLabel = summary.strength.status === "due"
+    ? "Due"
+    : summary.strength.status === "in_progress"
+      ? "In progress"
+      : summary.strength.status === "complete"
+        ? "Done"
+        : summary.strength.status === "away_complete"
+          ? "Away workout done"
+          : summary.strength.status === "unable"
+            ? "Unable to train"
+            : "Not due";
   const noteMarkup = `
     <label class="quick-field quick-notes">
       <span>Notes</span>
       <input id="today-notes" type="text" maxlength="120" value="${escapeHtml(today.notes || "")}" placeholder="client lunch, poor sleep, field day">
     </label>
   `;
-  const strengthAction = getStrengthPrimaryAction(summary);
 
   todayCard.innerHTML = `
-    <div class="today-grid">
-      <div class="today-main">
-        <div class="today-kicker">${escapeHtml(selectedDateLabel)}</div>
-        <div class="today-score">${today.totalScore}</div>
-        <div class="today-copy">${isCurrentDay ? "Score so far. Today's total updates here, but it stays out of trend charts until the day is complete." : "Win day at 75+. Solid day at 55-74. Regular streak survives solid days; elite streak needs wins."}</div>
-        <div class="today-focus">
-          <div class="today-focus-label">Today's Target</div>
-          <div class="today-focus-copy">Stay at a 1.</div>
-          <div class="today-actions-list">
-            <div class="today-action-pill">Anchor meals with protein</div>
-            <div class="today-action-pill">Stop at satisfied, not full</div>
-            <div class="today-action-pill">Move your body at least once</div>
+    <div class="today-grid compact-dashboard">
+      <div class="today-main full-width">
+        <div class="today-header-row">
+          <div>
+            <div class="today-kicker">Today</div>
+            <div class="today-date-label">${escapeHtml(selectedDateLabel)}</div>
           </div>
-        </div>
-        <div class="today-focus">
-          <div class="today-focus-label">Key Actions</div>
-          <div class="today-actions-list">
-            ${keyActions.map((action) => `<div class="today-action-pill">${escapeHtml(action)}</div>`).join("")}
+          <div class="today-score-badge">
+            <span>Score so far</span>
+            <strong>${today.totalScore}</strong>
           </div>
-        </div>
-        <div class="today-copy">${escapeHtml(focus)}</div>
-        <div class="chapter-banner">
-          <div class="chapter-label">${escapeHtml(campaignMeta.title)}</div>
-          <div class="chapter-title">${escapeHtml(chapter.title)}</div>
-          <div class="chapter-subtitle">${escapeHtml(chapter.subtitle)}</div>
-        </div>
-        <div class="dispatch-card">
-          <div class="today-focus-label">${escapeHtml(summary.dailyDispatch.label)}</div>
-          <div class="dispatch-title">${escapeHtml(summary.dailyDispatch.title)}</div>
-          <div class="dispatch-copy">${escapeHtml(summary.dailyDispatch.body)}</div>
-        </div>
-        <div class="xp-progress-card">
-          <div class="xp-line">Level ${summary.level} | ${summary.totalXp.toLocaleString()} XP total</div>
-          <div class="xp-line">Next level at ${summary.nextLevelXp.toLocaleString()} XP</div>
-          <div class="xp-line">${summary.xpToNext.toLocaleString()} XP to go</div>
-          <div class="xp-progress"><span style="width:${Math.max(0, Math.min(100, ((summary.totalXp - getXpForLevel(summary.level)) / 250) * 100))}%"></span></div>
-        </div>
-        <div class="boss-fight-card">
-          <div class="boss-title">Boss Fight: ${escapeHtml(summary.bossFight.title)}</div>
-          <div class="boss-copy">${escapeHtml(summary.bossFight.body)}</div>
-        </div>
-        <div class="quest-card">
-          <div class="today-focus-label">Active Quests</div>
-          <div class="quest-list">
-            ${(today.activeQuests || []).map((quest) => `
-              <article class="quest-item ${quest.completed ? "completed" : ""}">
-                <div class="quest-row">
-                  <strong>${escapeHtml(quest.title)}</strong>
-                  <span class="quest-xp">+${quest.xpReward} XP</span>
-                </div>
-                <div class="quest-copy">${escapeHtml(quest.description)}</div>
-                <div class="quest-status">${quest.completed ? "Completed" : `Target: ${escapeHtml(quest.duration)}`}</div>
-              </article>
-            `).join("")}
-          </div>
-          ${today.questNarrative ? `<div class="quest-narrative">${escapeHtml(today.questNarrative)}</div>` : ""}
         </div>
         <div class="strength-inline-card">
           <div class="strength-inline-top">
             <div>
-              <div class="boss-title">Strength Quest</div>
-              <div class="boss-copy">${escapeHtml(getStrengthStoryHook(summary))}</div>
+              <div class="boss-title">Strength</div>
+              <div class="boss-copy">${escapeHtml(strengthStatusLabel)}</div>
             </div>
             <button id="today-strength-shortcut" type="button" class="strength-shortcut-button">${escapeHtml(strengthAction.label)}</button>
           </div>
           <div class="strength-inline-meta">
-            <span>${summary.strength.status === "due" ? "Workout due today" : summary.strength.status === "complete" ? "Workout complete" : summary.strength.status === "in_progress" ? "Workout in progress" : "Recovery / non-lifting day"}</span>
-            <span>${summary.strength.nextDay ? `Next: ${formatDisplayDate(summary.strength.nextDay)}` : "Next session pending"}</span>
+            <span>${escapeHtml(strengthAction.detail)}</span>
+            <span>${summary.strength.nextDay ? `Next: ${formatDisplayDate(summary.strength.nextDay)}` : " "}</span>
           </div>
-          <div class="strength-inline-detail">${escapeHtml(strengthAction.detail)}</div>
         </div>
         <div class="quick-fields">
           ${isMaintenance ? "" : `
@@ -3499,8 +3547,6 @@ function renderTodayCard(summary) {
               </div>
               <div class="food-structure-summary compact">
                 <div class="food-structure-score">Nutrition Score: ${formatMaybe(mealBehaviorPreview.nutritionScore, 0)}</div>
-                <div class="food-structure-rating">${escapeHtml(mealBehaviorPreview.foodStructureRating)}</div>
-                <div class="food-structure-coaching">${escapeHtml(mealBehaviorPreview.foodCoachingCopy)}</div>
               </div>
               <label class="quick-field quick-notes">
                 <span>Food note</span>
@@ -3533,8 +3579,6 @@ function renderTodayCard(summary) {
               </div>
               <div class="food-structure-summary compact">
                 <div class="food-structure-score">Food Structure Score: ${formatFoodStructureScore(structuredPreview.foodStructureScore)}/5</div>
-                <div class="food-structure-rating">${escapeHtml(structuredPreview.foodStructureRating)}</div>
-                <div class="food-structure-coaching">${escapeHtml(structuredPreview.foodCoachingCopy)}</div>
               </div>
               <label class="quick-field quick-notes">
                 <span>Food structure note</span>
@@ -3542,23 +3586,6 @@ function renderTodayCard(summary) {
               </label>
             </div>
           ` : ""}
-      </div>
-      <div class="today-stats">
-        ${quickStats.map((item) => `
-          <article class="today-stat">
-            <div class="stat-label">${escapeHtml(item.label)}</div>
-            <div class="stat-value small">${escapeHtml(item.value)}</div>
-          </article>
-        `).join("")}
-      </div>
-      <div class="today-breakdown ${isMaintenance ? "is-hidden" : ""}">
-        <div class="score-row"><span>Steps</span><span>${today.stepPoints}/${scoringWeights.steps}</span></div>
-        <div class="score-row"><span>Exercise</span><span>${today.exercisePoints}/${scoringWeights.exercise}</span></div>
-        ${today.mode === "full" ? `<div class="score-row"><span>${today.foodModel === "meal-v2" ? "Nutrition" : today.foodModel === "structure-v1" ? "Food Structure" : "Legacy Food"}</span><span>${today.foodModel === "meal-v2" ? `${formatMaybe(today.nutritionScore, 0)}/100` : today.foodModel === "structure-v1" ? `${formatFoodStructureScore(today.foodStructureScore || 0)}/5` : `${today.foodPoints}/${scoringWeights.food.total}`}</span></div>` : ""}
-        <div class="score-row"><span>Movement</span><span>${formatMaybe(today.movementScore, 0)}/100</span></div>
-        <div class="score-row"><span>Strength</span><span>${formatMaybe(today.strengthScore, 0)}/100</span></div>
-        <div class="score-row"><span>Consistency</span><span>${formatMaybe(today.consistencyScore, 0)}/100</span></div>
-        <div class="today-breakdown-note">${escapeHtml(getTodayBreakdownNote(today))}</div>
       </div>
     </div>
   `;
@@ -3691,10 +3718,12 @@ function renderStrengthCard(summary) {
   const dateKey = getSelectedDateKey();
   const workout = getWorkoutPlan();
   const session = summary.strength.session;
+  const awayWorkout = state.strengthPlan.awayWorkout || defaultStrengthPlan.awayWorkout;
   const isDue = summary.strength.status === "due";
   const isInProgress = summary.strength.status === "in_progress";
   const isComplete = summary.strength.status === "complete";
   const strengthAction = getStrengthPrimaryAction(summary);
+  const finisherDefs = getOptionalFinisherDefinitions();
   const exercises = (session?.exercises || workout.exercises.map((exercise) => ({
     ...exercise,
     targetSets: exercise.sets,
@@ -3712,19 +3741,11 @@ function renderStrengthCard(summary) {
       <div>
         <div class="strength-kicker">${isStrengthDay(dateKey) ? "Workout scheduled today" : "Recovery / non-lifting day"}</div>
         <h3>${escapeHtml(workout.name)}</h3>
-        <p>${isStrengthDay(dateKey) ? "Thirty-minute full-body session. Progress with clean reps and steady effort." : `Next lifting day: ${summary.strength.nextDay ? formatDisplayDate(summary.strength.nextDay) : "TBD"}`}</p>
+        <p>${isStrengthDay(dateKey) ? "Base workout first." : `Next lifting day: ${summary.strength.nextDay ? formatDisplayDate(summary.strength.nextDay) : "TBD"}`}</p>
         <div class="strength-guidance-card">
           <div class="strength-guidance-title">First Week Guidance</div>
-          <ul class="strength-guidance-list">
-            <li>Start lighter than you think you need.</li>
-            <li>You should finish each set feeling like you still had 2-3 good reps left.</li>
-            <li>If form breaks down, the weight is too heavy.</li>
-            <li>Controlled reps matter more than load.</li>
-            <li>For back-sensitive movements, especially Romanian deadlifts, use caution and stay conservative.</li>
-            <li>It is better to leave the gym feeling capable than wrecked.</li>
-          </ul>
-          <div class="strength-guidance-meta">Rest 60 seconds between sets. For squat and Romanian deadlift, use 75-90 seconds if needed. Complete all 3 sets of one exercise before moving to the next exercise.</div>
-          <div class="strength-guidance-warning">Back safety: Romanian deadlift is a technique exercise first, goblet squat depth only goes as low as posture stays solid, rows should avoid twisting or jerking, and if low-back discomfort appears, reduce load, shorten range, or stop the movement.</div>
+          <div class="strength-guidance-meta">Start lighter than you think. Leave 2-3 reps in reserve. Controlled reps beat load.</div>
+          <div class="strength-guidance-warning">Back safety first: if posture softens or your low back starts talking, reduce load, shorten range, or stop.</div>
         </div>
       </div>
       <div class="strength-actions">
@@ -3792,6 +3813,32 @@ function renderStrengthCard(summary) {
         })()}
       `).join("")}
     </div>
+    <details class="optional-finisher-card">
+      <summary>Optional Finisher</summary>
+      <div class="strength-exercise-meta">Optional only. Light effort. Skip if time, joints, or energy feel off.</div>
+      <div class="finisher-list">
+        ${finisherDefs.map((finisher) => {
+          const sessionFinisher = session?.optionalFinishers?.find((item) => item.id === finisher.id);
+          return `
+            <label class="finisher-item ${sessionFinisher?.completed ? "completed" : ""}">
+              <input type="checkbox" data-finisher-id="${finisher.id}" ${sessionFinisher?.completed ? "checked" : ""}>
+              <span>
+                <strong>${escapeHtml(finisher.name)}</strong>
+                <small>${escapeHtml(finisher.exercises.map((exercise) => `${exercise.name} ${exercise.sets} x ${exercise.reps}`).join(" | "))}</small>
+              </span>
+            </label>
+          `;
+        }).join("")}
+      </div>
+    </details>
+    <div class="strength-status-card">
+      <div class="today-focus-label">Away from the Gym</div>
+      <div class="strength-exercise-meta">${escapeHtml(awayWorkout.exercises.map((exercise) => `${exercise.name} ${exercise.sets} x ${exercise.reps}`).join(" | "))}</div>
+      <label class="checkbox-row compact">
+        <input id="away-workout-completed" type="checkbox" ${session?.awayWorkoutCompleted ? "checked" : ""}>
+        Completed Away Workout
+      </label>
+    </div>
     <div class="strength-footer">
       <label class="quick-field">
         <span>Duration (min)</span>
@@ -3808,6 +3855,19 @@ function renderStrengthCard(summary) {
         <input id="strength-back-sensitivity" type="checkbox" ${session?.backSensitivity ? "checked" : ""}>
         Back sensitivity today
       </label>
+      <div class="strength-status-card compact">
+        <label class="checkbox-row compact">
+          <input id="strength-unable-to-train" type="checkbox" ${session?.unableToTrain ? "checked" : ""}>
+          Unable to Train
+        </label>
+        <details class="strength-reason-details">
+          <summary>Add reason</summary>
+          <label class="quick-field quick-notes">
+            <span>Reason</span>
+            <input id="strength-unable-reason" type="text" maxlength="120" value="${escapeHtml(session?.unableReason || "")}" placeholder="travel, schedule, joints, no gym access">
+          </label>
+        </details>
+      </div>
       <label class="quick-field quick-notes">
         <span>Workout note</span>
         <input id="strength-note" type="text" maxlength="160" value="${escapeHtml(session?.note || "")}" placeholder="Strong session, bench felt better, left one rep in reserve">
@@ -3835,6 +3895,11 @@ function renderStrengthCard(summary) {
   for (const input of strengthCard.querySelectorAll("[data-strength-exercise-flag]")) {
     input.addEventListener("change", handleStrengthIncreaseToggle);
   }
+  for (const input of strengthCard.querySelectorAll("[data-finisher-id]")) {
+    input.addEventListener("change", handleFinisherToggle);
+  }
+  document.getElementById("away-workout-completed")?.addEventListener("change", handleAwayWorkoutToggle);
+  document.getElementById("strength-unable-to-train")?.addEventListener("change", handleUnableToTrainToggle);
   const saveWorkoutButton = document.getElementById("save-strength-session");
   if (saveWorkoutButton) {
     saveWorkoutButton.addEventListener("click", saveStrengthSession);
@@ -3868,30 +3933,24 @@ function renderScorecard(summary) {
 }
 
 function renderProgress(summary) {
+  const momentum = summary.momentum;
   progressCard.innerHTML = `
     <div class="progress-copy">
-      <div class="progress-region-card">
-        <div class="today-focus-label">Current Region</div>
-        <div class="dispatch-title">${escapeHtml(summary.region.currentRegion.name)}</div>
-        <div class="dispatch-copy">${escapeHtml(summary.region.currentRegion.focus)}</div>
+      <div class="progress-card-grid">
+        <div class="progress-stat-card"><strong>${momentum.currentWinStreak}</strong><span>current win streak</span></div>
+        <div class="progress-stat-card"><strong>${momentum.workoutProgress}</strong><span>workouts this week</span></div>
+        <div class="progress-stat-card"><strong>${momentum.onTrackDaysWeek}</strong><span>on-track days this week</span></div>
+        <div class="progress-stat-card"><strong>${momentum.noStuffedDaysWeek}</strong><span>no-stuffed days this week</span></div>
+        <div class="progress-stat-card"><strong>${formatMaybe(summary.weekly.latestHealth7, 0)}</strong><span>7-day health score</span></div>
+        <div class="progress-stat-card"><strong>${formatMaybe(summary.weekly.rolling14DayWeightAvg, 1)}</strong><span>14-day weight avg</span></div>
       </div>
-      <p>${escapeHtml(summary.progress.workoutSummary)}</p>
-      <p>${escapeHtml(summary.progress.liftSummary)}</p>
-      <p>${escapeHtml(summary.progress.eatingSummary)}</p>
-      <p>${escapeHtml(summary.progress.weightSummary)}</p>
-      <p>${escapeHtml(`Archive status: ${(summary.storyArchive || []).length} campaign entries recorded, from early survey marks to the current region.`)}</p>
-      <div class="story-action-row">
-        <button id="open-story-full" type="button" class="secondary-button">Read Full Story to Date</button>
-        <button id="open-story-summary" type="button" class="secondary-button">Summary to Date</button>
+      <div class="progress-inline-list">
+        <div><strong>Next milestone:</strong> ${escapeHtml(momentum.nextMilestone)}</div>
+        <div><strong>Lift progress:</strong> ${escapeHtml(summary.progress.liftSummary)}</div>
+        <div><strong>Body trend:</strong> ${escapeHtml(summary.progress.weightSummary)}</div>
       </div>
     </div>
   `;
-  document.getElementById("open-story-full")?.addEventListener("click", () => {
-    openStoryArchive("full");
-  });
-  document.getElementById("open-story-summary")?.addEventListener("click", () => {
-    openStoryArchive("summary");
-  });
 }
 
 function getEditableStrengthSession() {
@@ -3929,7 +3988,46 @@ function handleStrengthIncreaseToggle(event) {
   render();
 }
 
+function handleFinisherToggle(event) {
+  const session = getEditableStrengthSession();
+  const finisherId = event.target.dataset.finisherId;
+  session.optionalFinishers = (session.optionalFinishers || []).map((finisher) =>
+    finisher.id === finisherId
+      ? { ...finisher, completed: event.target.checked }
+      : finisher
+  );
+  state.meta.currentStrengthSession = session;
+  render();
+}
+
+function handleAwayWorkoutToggle(event) {
+  const session = getEditableStrengthSession();
+  session.awayWorkoutCompleted = event.target.checked;
+  if (event.target.checked) {
+    session.unableToTrain = false;
+    session.unableReason = "";
+  }
+  state.meta.currentStrengthSession = session;
+  render();
+}
+
+function handleUnableToTrainToggle(event) {
+  const session = getEditableStrengthSession();
+  session.unableToTrain = event.target.checked;
+  if (event.target.checked) {
+    session.awayWorkoutCompleted = false;
+  }
+  state.meta.currentStrengthSession = session;
+  render();
+}
+
 function getAutoWorkoutScore(session) {
+  if (session.unableToTrain) {
+    return 0;
+  }
+  if (session.awayWorkoutCompleted) {
+    return 2;
+  }
   const completedSets = session.exercises.flatMap((exercise) => exercise.actualSets).filter((set) => set.completed).length;
   const totalSets = session.exercises.reduce((sum, exercise) => sum + exercise.actualSets.length, 0);
   const ratio = totalSets ? completedSets / totalSets : 0;
@@ -3953,6 +4051,16 @@ function saveStrengthSession() {
   const overrideValue = document.getElementById("strength-score")?.value;
   session.workoutScoreOverride = overrideValue === "" ? null : Number(overrideValue);
   session.backSensitivity = Boolean(document.getElementById("strength-back-sensitivity")?.checked);
+  session.awayWorkoutCompleted = Boolean(document.getElementById("away-workout-completed")?.checked);
+  session.unableToTrain = Boolean(document.getElementById("strength-unable-to-train")?.checked);
+  session.unableReason = (document.getElementById("strength-unable-reason")?.value || "").trim().slice(0, 120);
+  if (session.unableToTrain) {
+    session.awayWorkoutCompleted = false;
+  }
+  if (session.awayWorkoutCompleted) {
+    session.unableToTrain = false;
+    session.unableReason = "";
+  }
   session.exercises = session.exercises.map((exercise) => {
     const last = getLastExercisePerformance(exercise.name);
     const lastWeight = Number(last?.exercise?.actualSets?.find((set) => set.weight)?.weight || 0);
@@ -3969,8 +4077,14 @@ function saveStrengthSession() {
   });
   const completedSets = session.exercises.flatMap((exercise) => exercise.actualSets).filter((set) => set.completed || set.weight || set.reps).length;
   const totalSets = session.exercises.reduce((sum, exercise) => sum + exercise.actualSets.length, 0);
-  session.completed = totalSets ? completedSets / totalSets >= 0.75 : false;
+  session.completed = session.awayWorkoutCompleted || (totalSets ? completedSets / totalSets >= 0.75 : false);
+  if (session.unableToTrain) {
+    session.completed = false;
+  }
   session.workoutScore = session.workoutScoreOverride ?? getAutoWorkoutScore(session);
+  session.finisherBonusXp = session.completed && !session.awayWorkoutCompleted && !session.unableToTrain
+    ? Math.min(20, (session.optionalFinishers || []).filter((finisher) => finisher.completed).length * 10)
+    : 0;
 
   state.strengthHistory = [
     ...state.strengthHistory.filter((item) => item.date !== session.date),
@@ -3979,7 +4093,7 @@ function saveStrengthSession() {
   state.meta.currentStrengthSession = null;
   saveState();
   render();
-  setStatus(`Saved Strength Quest session for ${formatDisplayDate(session.date)}.`);
+  setStatus(`Saved ${session.unableToTrain ? "unable-to-train status" : session.awayWorkoutCompleted ? "away workout" : "Strength Quest session"} for ${formatDisplayDate(session.date)}.`);
 }
 
 function buildSignals(loggedEntries, weekly, strengthSummary) {
@@ -4018,9 +4132,99 @@ function buildSignals(loggedEntries, weekly, strengthSummary) {
   if (weekly.recentHealthVariance != null && weekly.recentHealthVariance > 18) {
     signals.push("High-variance days still correlate with noisier weigh-ins. Consistency is doing more for you than intensity.");
   }
-  const region = computeRegionState(loggedEntries, strengthSummary).currentRegion;
-  signals.push(`Current region: ${region.name}. ${region.focus}`);
+  const momentum = computeMomentumSummary(loggedEntries, weekly, strengthSummary);
+  signals.push(`${momentum.momentumLabel}. ${momentum.nextMilestone}`);
   return signals.slice(0, 5);
+}
+
+function isWinDay(day) {
+  return (day.dailyHealthScore ?? day.totalScore ?? 0) >= 70;
+}
+
+function getNoStuffedDays(days) {
+  return days.filter((day) => {
+    if (day.foodModel === "meal-v2") {
+      return !Object.values(day.mealBehavior || {}).some((meal) => Number(meal?.score) >= 5);
+    }
+    if (day.foodModel === "structure-v1") {
+      return (day.foodStructureScore ?? 0) > 2;
+    }
+    return !mealSlots.some((slot) => Number(day.food?.[slot] ?? 0) >= 5);
+  }).length;
+}
+
+function getCurrentWinStreak(days) {
+  let streak = 0;
+  for (let index = days.length - 1; index >= 0; index -= 1) {
+    if (!isWinDay(days[index])) {
+      break;
+    }
+    streak += 1;
+  }
+  return streak;
+}
+
+function buildNextMilestone(loggedEntries, strengthSummary) {
+  const winStreak = getCurrentWinStreak(loggedEntries);
+  const workoutsThisWeek = strengthSummary.progress.workoutsThisWeek.length;
+  const noStuffed14 = getNoStuffedDays(loggedEntries.slice(-14));
+  if (workoutsThisWeek < state.strengthSettings.daysPerWeek) {
+    return `${state.strengthSettings.daysPerWeek - workoutsThisWeek} more workout${workoutsThisWeek + 1 === state.strengthSettings.daysPerWeek ? "" : "s"} for a full ${state.strengthSettings.daysPerWeek}/${state.strengthSettings.daysPerWeek} week.`;
+  }
+  if (winStreak < 7) {
+    return `${7 - winStreak} more win day${7 - winStreak === 1 ? "" : "s"} for a 7-day streak.`;
+  }
+  if (noStuffed14 < 14) {
+    return `${14 - noStuffed14} more no-stuffed day${14 - noStuffed14 === 1 ? "" : "s"} for a clean 2-week run.`;
+  }
+  return "Hold the line and keep stacking base work.";
+}
+
+function computeMomentumSummary(loggedEntries, weekly, strengthSummary) {
+  const recentWeek = loggedEntries.slice(-7);
+  const currentWinStreak = getCurrentWinStreak(loggedEntries);
+  const workoutProgress = `${strengthSummary.progress.workoutsThisWeek.length}/${state.strengthSettings.daysPerWeek}`;
+  const onTrackDaysWeek = recentWeek.filter((day) => (day.nutritionScore ?? 0) >= 70 || (day.foodStructureScore ?? 0) >= 4).length;
+  const mealLogsWeek = recentWeek.filter((day) => day.foodModel === "meal-v2" ? Object.values(day.mealBehavior || {}).every((meal) => meal?.score != null) : day.foodModel === "structure-v1" ? (day.answeredCheckpoints ?? 0) >= 5 : day.answeredMeals?.length >= 3).length;
+  const noStuffedDaysWeek = getNoStuffedDays(recentWeek);
+  const weeklyMomentumScore = Math.round(
+    (Math.min(1, currentWinStreak / 7) * 35) +
+    (Math.min(1, strengthSummary.progress.workoutsThisWeek.length / Math.max(1, state.strengthSettings.daysPerWeek)) * 30) +
+    (Math.min(1, onTrackDaysWeek / 7) * 20) +
+    (Math.min(1, mealLogsWeek / 7) * 15)
+  );
+  const momentumLabel = weeklyMomentumScore >= 80
+    ? "Momentum building"
+    : weeklyMomentumScore >= 60
+      ? "Held the line"
+      : weeklyMomentumScore >= 40
+        ? "Base work stacking"
+        : "Rebuild the chain";
+  const milestones = [
+    { title: "3 straight wins", detail: "Stack three realistic good days in a row.", unlocked: currentWinStreak >= 3 },
+    { title: "7 straight logs", detail: "Keep the system honest for a full week.", unlocked: mealLogsWeek >= 7 },
+    { title: "3/3 workout week", detail: "Finish the full lifting week.", unlocked: strengthSummary.progress.workoutsThisWeek.length >= state.strengthSettings.daysPerWeek },
+    { title: "2 weeks with no stuffed days", detail: "Reduce major drift for 14 straight days.", unlocked: getNoStuffedDays(loggedEntries.slice(-14)) >= 14 },
+    { title: "Best rolling 7-day weight average", detail: "Set a new best short-term trend.", unlocked: weekly.gapFromBestWeightAverage != null && weekly.gapFromBestWeightAverage <= 0.2 },
+  ];
+  const recap = {
+    wentWell: strengthSummary.progress.workoutsThisWeek.length >= 2 ? "Base work stacked." : onTrackDaysWeek >= 4 ? "Food control held together on most days." : "You kept logging instead of drifting completely.",
+    slipped: noStuffedDaysWeek < recentWeek.length ? "A few meals drifted past 'enough'." : "No major slip showed up this week.",
+    target: strengthSummary.progress.workoutsThisWeek.length < state.strengthSettings.daysPerWeek ? "Finish the planned lifting week." : "Keep the next run of days simple and repeatable.",
+  };
+  return {
+    currentWinStreak,
+    workoutProgress,
+    onTrackDaysWeek,
+    mealLogsWeek,
+    noStuffedDaysWeek,
+    weeklyMomentumScore,
+    momentumLabel,
+    nextMilestone: buildNextMilestone(loggedEntries, strengthSummary),
+    recap,
+    recapSummary: `${recap.wentWell} ${recap.target}`,
+    milestones,
+  };
 }
 
 function buildWeeklyScorecard(loggedEntries, weekly, strengthSummary) {
@@ -4053,7 +4257,7 @@ function buildWeeklyScorecard(loggedEntries, weekly, strengthSummary) {
   };
 }
 
-function buildProgressSummary(loggedEntries, weekly, strengthSummary) {
+function buildProgressSummary(loggedEntries, weekly, strengthSummary, momentum) {
   const liftSummaryText = strengthSummary.progress.liftProgress.length
     ? strengthSummary.progress.liftProgress
       .slice(0, 3)
@@ -4062,11 +4266,12 @@ function buildProgressSummary(loggedEntries, weekly, strengthSummary) {
     : null;
   return {
     workoutSummary: `You logged ${strengthSummary.progress.workoutsThisMonth.length} strength workouts in the last 30 days.`,
-    liftSummary: liftSummaryText ? `Lift progress: ${liftSummaryText}.` : "Log a few workouts to start seeing lift progress milestones.",
+    liftSummary: liftSummaryText || "Log a few workouts to start seeing lift progress milestones.",
     eatingSummary: `You stayed in control on ${buildWeeklyScorecard(loggedEntries, weekly, strengthSummary).inControlDays} of the last 7 logged days.`,
     weightSummary: weekly.latestWeeklyWeightAverage != null && weekly.priorWeightAverage != null && weekly.latestWeeklyWeightAverage <= weekly.priorWeightAverage
       ? "Trend is still down despite normal day-to-day scale noise."
       : "Daily scale is noisy. Use the rolling average to judge direction.",
+    momentumSummary: momentum?.momentumLabel || "Momentum builds through repeatable days.",
   };
 }
 
@@ -4386,15 +4591,15 @@ function getSeriesStats(data, key) {
 }
 
 function renderRewards(summary) {
-  const storyRewardsMarkup = (summary.storyRewards || []).length
+  const storyRewardsMarkup = summary.momentum?.milestones?.some((item) => item.unlocked)
     ? `
       <div class="reward-subsection">
-        <div class="today-focus-label">Campaign Unlocks</div>
-        ${(summary.storyRewards || []).map((reward) => `
+        <div class="today-focus-label">Milestone Unlocks</div>
+        ${summary.momentum.milestones.filter((item) => item.unlocked).map((reward) => `
           <article class="reward-card unlocked story-reward-card">
             <div>
               <div class="reward-title">${escapeHtml(reward.title)}</div>
-              <div class="reward-meta">${escapeHtml(reward.label)}</div>
+              <div class="reward-meta">Unlocked by stacked behavior</div>
             </div>
             <div class="reward-story-detail">${escapeHtml(reward.detail)}</div>
           </article>
@@ -4435,58 +4640,33 @@ function renderRewards(summary) {
 }
 
 function renderStory(summary) {
-  const chapter = summary.currentChapter;
-  const archiveMode = state.meta.storyArchiveMode || "summary";
-  const mapMarkup = `
-    <div class="region-map">
-      ${regionDefinitions.map((region) => `
-        <div class="region-node ${summary.region.unlockedRegionIds.includes(region.id) ? "unlocked" : ""} ${summary.region.currentRegionId === region.id ? "current" : ""}">
-          <div class="region-node-title">${escapeHtml(region.name)}</div>
-          <div class="region-node-meta">${escapeHtml(region.rewardTitle)}</div>
-        </div>
-      `).join("")}
-    </div>
-  `;
-  const archiveMarkup = archiveMode === "full"
-    ? `
-      <div class="story-archive-list">
-        ${(summary.storyArchive || []).map((event) => `
-          <article class="archive-entry">
-            <div class="story-kicker">${escapeHtml(formatDisplayDate(event.date))}</div>
-            <h4>${escapeHtml(event.title)}</h4>
-            <p><strong>${escapeHtml(event.subtitle)}</strong></p>
-            <p>${escapeHtml(event.body)}</p>
-            ${event.reward ? `<div class="archive-reward">Unlocked: ${escapeHtml(event.reward.title)}</div>` : ""}
-          </article>
-        `).join("")}
-      </div>
-    `
-    : `
-      <div class="story-summary-card">
-        <p>${escapeHtml(summary.storySummary)}</p>
-      </div>
-    `;
+  const momentum = summary.momentum;
+  const trendDirection = `${getTrendArrow(summary.weekly.latestHealth7, summary.weekly.priorScoreAverage)} ${formatMaybe(summary.weekly.latestHealth7, 0)}`;
   storyCard.innerHTML = `
-    <div class="story-kicker">${escapeHtml(campaignMeta.title)}</div>
-    <h3>${escapeHtml(chapter.title)}</h3>
-    <p><strong>${escapeHtml(chapter.subtitle)}</strong></p>
-    <p>${escapeHtml(chapter.body)}</p>
-    <p>${escapeHtml(campaignMeta.subtitle)}</p>
-    <p>${escapeHtml(campaignMeta.themeLine)}</p>
-    <div class="today-focus-label">Region Map</div>
-    ${mapMarkup}
-    <div class="story-action-row">
-      <button id="story-summary-mode" type="button" class="secondary-button ${archiveMode === "summary" ? "active-story-button" : ""}">Summary to Date</button>
-      <button id="story-full-mode" type="button" class="secondary-button ${archiveMode === "full" ? "active-story-button" : ""}">Read Full Story to Date</button>
+    <div class="story-kicker">Momentum</div>
+    <div class="momentum-grid scoreboard-grid">
+      <article class="momentum-card compact">
+        <strong>${momentum.currentWinStreak}</strong>
+        <span>Current Streak</span>
+      </article>
+      <article class="momentum-card compact">
+        <strong>${momentum.workoutProgress}</strong>
+        <span>This Week</span>
+      </article>
+      <article class="momentum-card compact">
+        <strong>${escapeHtml(trendDirection)}</strong>
+        <span>7-day trend</span>
+      </article>
     </div>
-    ${archiveMarkup}
+    <details class="momentum-extra">
+      <summary>More</summary>
+      <div class="progress-inline-list">
+        <div><strong>Next milestone:</strong> ${escapeHtml(momentum.nextMilestone)}</div>
+        <div><strong>Weekly recap:</strong> ${escapeHtml(momentum.recapSummary)}</div>
+        <div><strong>Latest unlocks:</strong> ${escapeHtml(momentum.milestones.filter((item) => item.unlocked).slice(-2).map((item) => item.title).join(" | ") || "None yet")}</div>
+      </div>
+    </details>
   `;
-  document.getElementById("story-summary-mode")?.addEventListener("click", () => {
-    openStoryArchive("summary");
-  });
-  document.getElementById("story-full-mode")?.addEventListener("click", () => {
-    openStoryArchive("full");
-  });
 }
 
 function renderRecentDays(days) {
