@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.11.0";
+const APP_VERSION = "v4.11.2";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -225,7 +225,7 @@ const defaultStrengthPlan = {
   workouts: [
     {
       id: "full-body-a",
-      name: "Strength Quest A",
+          name: "Strength A",
       exercises: [
         {
           name: "Goblet Squat",
@@ -3167,7 +3167,7 @@ function getTodayFocus(summary) {
 function getKeyActions(summary) {
   const actions = [];
   if (getStrengthStatus(getSelectedDateKey()) === "due") {
-    actions.push("Complete Strength Quest workout");
+    actions.push("Complete strength workout");
   }
   if (summary.today.foodIsProvisional) {
     actions.push("Log food honestly");
@@ -4093,7 +4093,7 @@ function saveStrengthSession() {
   state.meta.currentStrengthSession = null;
   saveState();
   render();
-  setStatus(`Saved ${session.unableToTrain ? "unable-to-train status" : session.awayWorkoutCompleted ? "away workout" : "Strength Quest session"} for ${formatDisplayDate(session.date)}.`);
+  setStatus(`Saved ${session.unableToTrain ? "unable-to-train status" : session.awayWorkoutCompleted ? "away workout" : "strength session"} for ${formatDisplayDate(session.date)}.`);
 }
 
 function buildSignals(loggedEntries, weekly, strengthSummary) {

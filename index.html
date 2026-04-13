@@ -7,22 +7,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Health Quest</title>
-  <link rel="manifest" href="manifest.json?v=4.11.0">
-  <link rel="stylesheet" href="styles.css?v=4.11.0">
+  <link rel="manifest" href="manifest.json?v=4.11.2">
+  <link rel="stylesheet" href="styles.css?v=4.11.2">
 </head>
 <body>
   <div class="app-shell">
-    <header class="hero">
-      <div class="hero-copy">
-        <p class="eyebrow">Health Quest</p>
-        <h1>Build consistency that still works when life is boring.</h1>
-        <p class="hero-theme">The Outpost Campaign</p>
-        <p class="hero-text">
-          Long-horizon tracking for food, strength, recovery, and steady follow-through.
-        </p>
-      </div>
-    </header>
-
     <div id="update-banner" class="update-banner is-hidden">
       <span id="update-banner-text">A newer build is ready.</span>
       <button id="refresh-app" type="button">Refresh App</button>
@@ -95,21 +84,24 @@
           </label>
           <button id="save-profile" type="button">Save Settings</button>
         </div>
-        <div class="data-actions">
-          <button id="export-json" type="button" class="secondary-button">Export JSON</button>
-          <button id="export-food-csv" type="button" class="secondary-button">Food CSV</button>
-          <button id="export-body-csv" type="button" class="secondary-button">Body CSV</button>
-          <button id="export-strength-csv" type="button" class="secondary-button">Strength CSV</button>
-          <button id="export-summary-csv" type="button" class="secondary-button">Summary CSV</button>
-          <label class="secondary-button file-button">
-            Import JSON
-            <input id="import-json" type="file" accept="application/json">
-          </label>
-        </div>
-        <div class="meta-list">
-          <div class="meta-item"><span>Last export</span><strong id="last-export-status">Never</strong></div>
-          <div class="meta-item"><span>App version</span><strong id="app-version">--</strong></div>
-        </div>
+        <details class="compact-details">
+          <summary>Data Tools</summary>
+          <div class="data-actions">
+            <button id="export-json" type="button" class="secondary-button">Export JSON</button>
+            <button id="export-food-csv" type="button" class="secondary-button">Food CSV</button>
+            <button id="export-body-csv" type="button" class="secondary-button">Body CSV</button>
+            <button id="export-strength-csv" type="button" class="secondary-button">Strength CSV</button>
+            <button id="export-summary-csv" type="button" class="secondary-button">Summary CSV</button>
+            <label class="secondary-button file-button">
+              Import JSON
+              <input id="import-json" type="file" accept="application/json">
+            </label>
+          </div>
+          <div class="meta-list">
+            <div class="meta-item"><span>Last export</span><strong id="last-export-status">Never</strong></div>
+            <div class="meta-item"><span>App version</span><strong id="app-version">--</strong></div>
+          </div>
+        </details>
         <p id="status-message" class="status-message">Local-first storage is on. Export occasionally for safety.</p>
       </section>
 
@@ -169,7 +161,7 @@
 
       <section class="panel strength-panel" data-view="strength">
         <div class="panel-header">
-          <h2>Strength Quest</h2>
+          <h2>Strength</h2>
         </div>
         <div id="strength-card" class="strength-card"></div>
       </section>
@@ -202,26 +194,29 @@
         <div class="panel-header">
           <h2>Rewards</h2>
         </div>
-        <div class="reward-form">
-          <label>
-            <span>Reward name</span>
-            <input id="reward-name" type="text" maxlength="48" placeholder="New shirt, movie night, massage">
-          </label>
-          <label>
-            <span>Unlock by</span>
-            <select id="reward-type">
-              <option value="level">Level</option>
-              <option value="streak">Streak</option>
-              <option value="logged_days">Logged days</option>
-              <option value="lowest_avg_weight">New lowest 7-day average weight</option>
-            </select>
-          </label>
-          <label id="reward-value-wrap">
-            <span>Target value</span>
-            <input id="reward-value" type="number" min="1" max="999" step="1" value="2">
-          </label>
-          <button id="add-reward" type="button">Add Reward</button>
-        </div>
+        <details class="compact-details">
+          <summary>Add Reward</summary>
+          <div class="reward-form">
+            <label>
+              <span>Reward name</span>
+              <input id="reward-name" type="text" maxlength="48" placeholder="New shirt, movie night, massage">
+            </label>
+            <label>
+              <span>Unlock by</span>
+              <select id="reward-type">
+                <option value="level">Level</option>
+                <option value="streak">Streak</option>
+                <option value="logged_days">Logged days</option>
+                <option value="lowest_avg_weight">New lowest 7-day average weight</option>
+              </select>
+            </label>
+            <label id="reward-value-wrap">
+              <span>Target value</span>
+              <input id="reward-value" type="number" min="1" max="999" step="1" value="2">
+            </label>
+            <button id="add-reward" type="button">Add Reward</button>
+          </div>
+        </details>
         <div id="reward-list" class="reward-list"></div>
       </section>
 
@@ -236,7 +231,10 @@
         <div class="panel-header">
           <h2>Recent Days</h2>
         </div>
-        <div id="day-list" class="day-list"></div>
+        <details class="compact-details">
+          <summary>Show Recent Days</summary>
+          <div id="day-list" class="day-list"></div>
+        </details>
       </section>
     </main>
 
@@ -246,7 +244,7 @@
     </footer>
   </div>
 
-  <script src="exercise-help.js?v=4.11.0"></script>
-  <script src="app.js?v=4.11.0"></script>
+  <script src="exercise-help.js?v=4.11.2"></script>
+  <script src="app.js?v=4.11.2"></script>
 </body>
 </html>
