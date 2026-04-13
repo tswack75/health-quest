@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.11.2";
+const APP_VERSION = "v4.11.3";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
