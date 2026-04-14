@@ -1398,6 +1398,39 @@ button,
   margin-bottom: 10px;
 }
 
+.strength-exercise-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+}
+
+.strength-exercise-summary::-webkit-details-marker {
+  display: none;
+}
+
+.strength-summary-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.strength-summary-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(13, 59, 102, 0.06);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .strength-exercise-name {
   font-weight: 800;
 }
@@ -1524,8 +1557,19 @@ button,
   padding-top: 4px;
 }
 
-.finisher-set-row {
-  grid-template-columns: 50px minmax(0, 1fr) minmax(0, 1fr) auto;
+.finisher-compact-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.finisher-compact-row input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.8);
 }
 
 .finisher-item.completed {
