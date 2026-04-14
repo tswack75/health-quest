@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.11.3";
+const APP_VERSION = "v4.11.4";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -1015,6 +1015,8 @@ function migrateStrengthSession(session, strengthPlan = defaultStrengthPlan) {
 
   const workout = strengthPlan.workouts.find((item) => item.id === session.workoutId) || strengthPlan.workouts[0];
   const exerciseMap = new Map((session.exercises || []).map((exercise) => [exercise.name, exercise]));
+  const finisherDefs = strengthPlan.optionalFinishers || defaultStrengthPlan.optionalFinishers || [];
+  const finisherMap = new Map((session.optionalFinishers || []).map((finisher) => [finisher.id, finisher]));
   const exerciseAliases = {
     "Dumbbell Bench Press": "Dumbbell Bench Press / Incline Push-Ups",
     "Plank": "Plank / Dead Bug",
@@ -1034,10 +1036,35 @@ function migrateStrengthSession(session, strengthPlan = defaultStrengthPlan) {
     unableToTrain: Boolean(session.unableToTrain),
     unableReason: typeof session.unableReason === "string" ? session.unableReason.slice(0, 120) : "",
     note: typeof session.note === "string" ? session.note.slice(0, 160) : "",
-    optionalFinishers: Array.isArray(session.optionalFinishers) ? session.optionalFinishers.map((finisher) => ({
-      id: finisher.id,
-      completed: Boolean(finisher.completed),
-    })) : [],
+    optionalFinishers: finisherDefs.map((finisher) => {
+      const prior = finisherMap.get(finisher.id) || {};
+      const priorExercises = new Map((prior.exercises || []).map((exercise) => [exercise.name, exercise]));
+      return {
+        id: finisher.id,
+        completed: Boolean(prior.completed),
+        exercises: finisher.exercises.map((exercise) => {
+          const previousExercise = priorExercises.get(exercise.name) || {};
+          return {
+            name: exercise.name,
+            sets: exercise.sets,
+            reps: exercise.reps,
+            actualSets: Array.isArray(previousExercise.actualSets)
+              ? previousExercise.actualSets.map((set, index) => ({
+                  set: index + 1,
+                  weight: set.weight ?? "",
+                  reps: set.reps ?? "",
+                  completed: Boolean(set.completed),
+                }))
+              : Array.from({ length: exercise.sets }, (_, index) => ({
+                  set: index + 1,
+                  weight: "",
+                  reps: "",
+                  completed: false,
+                })),
+          };
+        }),
+      };
+    }),
     exercises: workout.exercises.map((exercise) => {
       const prior = exerciseMap.get(exercise.name) || exerciseMap.get(exerciseAliases[exercise.name]) || {};
       return {
@@ -3057,6 +3084,17 @@ function createStrengthSession(dateKey) {
     optionalFinishers: (state.strengthPlan.optionalFinishers || []).map((finisher) => ({
       id: finisher.id,
       completed: false,
+      exercises: finisher.exercises.map((exercise) => ({
+        name: exercise.name,
+        sets: exercise.sets,
+        reps: exercise.reps,
+        actualSets: Array.from({ length: exercise.sets }, (_, index) => ({
+          set: index + 1,
+          weight: "",
+          reps: "",
+          completed: false,
+        })),
+      })),
     })),
     exercises: workout.exercises.map((exercise) => {
       const last = getLastExercisePerformance(exercise.name);
@@ -3820,13 +3858,32 @@ function renderStrengthCard(summary) {
         ${finisherDefs.map((finisher) => {
           const sessionFinisher = session?.optionalFinishers?.find((item) => item.id === finisher.id);
           return `
-            <label class="finisher-item ${sessionFinisher?.completed ? "completed" : ""}">
-              <input type="checkbox" data-finisher-id="${finisher.id}" ${sessionFinisher?.completed ? "checked" : ""}>
-              <span>
-                <strong>${escapeHtml(finisher.name)}</strong>
-                <small>${escapeHtml(finisher.exercises.map((exercise) => `${exercise.name} ${exercise.sets} x ${exercise.reps}`).join(" | "))}</small>
-              </span>
-            </label>
+            <div class="finisher-item ${sessionFinisher?.completed ? "completed" : ""}">
+              <label class="finisher-toggle-row">
+                <input type="checkbox" data-finisher-id="${finisher.id}" ${sessionFinisher?.completed ? "checked" : ""}>
+                <span>
+                  <strong>${escapeHtml(finisher.name)}</strong>
+                  <small>${escapeHtml(finisher.exercises.map((exercise) => `${exercise.name} ${exercise.sets} x ${exercise.reps}`).join(" | "))}</small>
+                </span>
+              </label>
+              <div class="finisher-exercise-list">
+                ${(sessionFinisher?.exercises || []).map((exercise, exerciseIndex) => `
+                  <div class="finisher-exercise">
+                    <div class="strength-exercise-meta"><strong>${escapeHtml(exercise.name)}</strong> ${escapeHtml(String(exercise.sets))} x ${escapeHtml(String(exercise.reps))}</div>
+                    <div class="strength-sets finisher-sets">
+                      ${(exercise.actualSets || []).map((set, setIndex) => `
+                        <div class="strength-set-row finisher-set-row">
+                          <span class="strength-set-label">Set ${setIndex + 1}</span>
+                          <input data-finisher-exercise="${finisher.id}::${exerciseIndex}" data-finisher-set="${setIndex}" data-finisher-field="weight" type="text" inputmode="decimal" placeholder="wt" value="${escapeHtml(String(set.weight ?? ""))}">
+                          <input data-finisher-exercise="${finisher.id}::${exerciseIndex}" data-finisher-set="${setIndex}" data-finisher-field="reps" type="text" inputmode="decimal" placeholder="reps" value="${escapeHtml(String(set.reps ?? ""))}">
+                          <button type="button" class="secondary-button finisher-complete-set" data-finisher-exercise="${finisher.id}::${exerciseIndex}" data-finisher-set="${setIndex}">${set.completed ? "Saved" : "Save Set"}</button>
+                        </div>
+                      `).join("")}
+                    </div>
+                  </div>
+                `).join("")}
+              </div>
+            </div>
           `;
         }).join("")}
       </div>
@@ -3897,6 +3954,12 @@ function renderStrengthCard(summary) {
   }
   for (const input of strengthCard.querySelectorAll("[data-finisher-id]")) {
     input.addEventListener("change", handleFinisherToggle);
+  }
+  for (const input of strengthCard.querySelectorAll("[data-finisher-field]")) {
+    input.addEventListener("input", handleFinisherDraftChange);
+  }
+  for (const button of strengthCard.querySelectorAll(".finisher-complete-set")) {
+    button.addEventListener("click", handleFinisherSetToggle);
   }
   document.getElementById("away-workout-completed")?.addEventListener("change", handleAwayWorkoutToggle);
   document.getElementById("strength-unable-to-train")?.addEventListener("change", handleUnableToTrainToggle);
@@ -4000,6 +4063,36 @@ function handleFinisherToggle(event) {
   render();
 }
 
+function handleFinisherDraftChange(event) {
+  const session = getEditableStrengthSession();
+  const [finisherId, exerciseIndexRaw] = String(event.target.dataset.finisherExercise || "").split("::");
+  const setIndex = Number(event.target.dataset.finisherSet);
+  const field = event.target.dataset.finisherField;
+  const exerciseIndex = Number(exerciseIndexRaw);
+  const finisher = (session.optionalFinishers || []).find((item) => item.id === finisherId);
+  if (!finisher || !finisher.exercises?.[exerciseIndex]?.actualSets?.[setIndex]) {
+    return;
+  }
+  finisher.exercises[exerciseIndex].actualSets[setIndex][field] = event.target.value;
+  state.meta.currentStrengthSession = session;
+}
+
+function handleFinisherSetToggle(event) {
+  const session = getEditableStrengthSession();
+  const [finisherId, exerciseIndexRaw] = String(event.currentTarget.dataset.finisherExercise || "").split("::");
+  const setIndex = Number(event.currentTarget.dataset.finisherSet);
+  const exerciseIndex = Number(exerciseIndexRaw);
+  const finisher = (session.optionalFinishers || []).find((item) => item.id === finisherId);
+  const targetSet = finisher?.exercises?.[exerciseIndex]?.actualSets?.[setIndex];
+  if (!targetSet) {
+    return;
+  }
+  targetSet.completed = !targetSet.completed;
+  state.meta.currentStrengthSession = session;
+  setStatus(targetSet.completed ? `Saved finisher set ${setIndex + 1}.` : `Reopened finisher set ${setIndex + 1}.`);
+  render();
+}
+
 function handleAwayWorkoutToggle(event) {
   const session = getEditableStrengthSession();
   session.awayWorkoutCompleted = event.target.checked;
@@ -4075,6 +4168,12 @@ function saveStrengthSession() {
       increaseNextTime: Boolean(exercise.increaseNextTime),
     };
   });
+  session.optionalFinishers = (session.optionalFinishers || []).map((finisher) => ({
+    ...finisher,
+    completed: Boolean(finisher.completed) || Boolean(finisher.exercises?.some((exercise) =>
+      exercise.actualSets?.some((set) => set.completed || set.weight || set.reps)
+    )),
+  }));
   const completedSets = session.exercises.flatMap((exercise) => exercise.actualSets).filter((set) => set.completed || set.weight || set.reps).length;
   const totalSets = session.exercises.reduce((sum, exercise) => sum + exercise.actualSets.length, 0);
   session.completed = session.awayWorkoutCompleted || (totalSets ? completedSets / totalSets >= 0.75 : false);

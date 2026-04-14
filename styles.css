@@ -1492,13 +1492,18 @@ button,
 
 .finisher-item {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
   gap: 10px;
-  align-items: start;
   padding: 12px;
   border-radius: 14px;
   background: var(--panel-strong);
   border: 1px solid var(--line);
+}
+
+.finisher-toggle-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
 }
 
 .finisher-item small {
@@ -1506,6 +1511,21 @@ button,
   margin-top: 4px;
   color: var(--muted);
   overflow-wrap: anywhere;
+}
+
+.finisher-exercise-list {
+  display: grid;
+  gap: 10px;
+}
+
+.finisher-exercise {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.finisher-set-row {
+  grid-template-columns: 50px minmax(0, 1fr) minmax(0, 1fr) auto;
 }
 
 .finisher-item.completed {
@@ -1853,16 +1873,16 @@ body.maintenance-mode .today-breakdown {
 
   .tab-bar {
     position: sticky;
-    top: max(8px, env(safe-area-inset-top));
+    top: max(10px, env(safe-area-inset-top));
     z-index: 10;
-    padding: 8px 0 12px;
-    margin-bottom: 24px;
+    padding: 10px 0 14px;
+    margin-bottom: 28px;
     background: linear-gradient(180deg, rgba(246, 239, 228, 0.96), rgba(246, 239, 228, 0.82));
     backdrop-filter: blur(8px);
   }
 
   .main-grid {
-    margin-top: 6px;
+    margin-top: 10px;
   }
 
   .app-footer {
