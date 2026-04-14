@@ -1563,6 +1563,17 @@ button,
   gap: 8px;
 }
 
+.finisher-compact-labels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .finisher-compact-row input {
   width: 100%;
   min-width: 0;
@@ -1839,7 +1850,7 @@ body.maintenance-mode .today-breakdown {
 @media (max-width: 640px) {
   .app-shell {
     width: 100%;
-    padding-top: 12px;
+    padding-top: 18px;
   }
 
   .hero,
@@ -1917,16 +1928,16 @@ body.maintenance-mode .today-breakdown {
 
   .tab-bar {
     position: sticky;
-    top: max(10px, env(safe-area-inset-top));
+    top: max(16px, env(safe-area-inset-top));
     z-index: 10;
-    padding: 10px 0 14px;
-    margin-bottom: 28px;
+    padding: 12px 0 18px;
+    margin-bottom: 34px;
     background: linear-gradient(180deg, rgba(246, 239, 228, 0.96), rgba(246, 239, 228, 0.82));
     backdrop-filter: blur(8px);
   }
 
   .main-grid {
-    margin-top: 10px;
+    margin-top: 16px;
   }
 
   .app-footer {

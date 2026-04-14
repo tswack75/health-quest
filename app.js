@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.12.0";
+const APP_VERSION = "v4.12.1";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -512,6 +512,11 @@ const levelRewardTitles = [
   "Breakwater Steward",
 ];
 
+let runtimeActiveTab = "today";
+const runtimeStrengthUi = {
+  exerciseOpen: {},
+};
+
 let state = loadState();
 
 const displayNameInput = document.getElementById("display-name");
@@ -582,6 +587,8 @@ const activityPanel = document.querySelector(".activity-panel");
 initialize();
 
 function initialize() {
+  runtimeActiveTab = "today";
+  runtimeStrengthUi.exerciseOpen = {};
   if (appVersion) {
     appVersion.textContent = APP_VERSION;
   }
@@ -1160,13 +1167,12 @@ function saveProfile() {
 }
 
 function setActiveTab(tab) {
-  state.meta.activeTab = tab;
+  runtimeActiveTab = tab;
   renderTabState();
-  saveState();
 }
 
 function renderTabState() {
-  const activeTab = state.meta.activeTab || "today";
+  const activeTab = runtimeActiveTab || "today";
   for (const button of tabButtons) {
     button.classList.toggle("active", button.dataset.tab === activeTab);
   }
@@ -1180,7 +1186,7 @@ function renderTabState() {
 
 function openStoryArchive(mode = "summary") {
   state.meta.storyArchiveMode = mode;
-  state.meta.activeTab = "progress";
+  runtimeActiveTab = "progress";
   render();
   saveState();
   requestAnimationFrame(() => {
@@ -3781,9 +3787,9 @@ function renderStrengthCard(summary) {
             const alternateEntry = exercise.alternateHelpSlug ? getExerciseHelpEntry(exercise.alternateHelpSlug) : null;
             const starter = getExerciseStartingGuidance(exercise);
             const increaseMarker = getPendingIncreaseReminder(exercise.name, dateKey);
-            const shouldOpen = Boolean(increaseMarker || exercise.actualSets?.some((set) => set.weight || set.reps || set.completed));
+            const shouldOpen = Boolean(runtimeStrengthUi.exerciseOpen[exercise.name]);
             return `
-        <details class="strength-exercise" ${shouldOpen ? "open" : ""}>
+        <details class="strength-exercise" data-exercise-name="${escapeHtml(exercise.name)}" ${shouldOpen ? "open" : ""}>
           <summary class="strength-exercise-summary">
             <div>
               <div class="strength-exercise-name">${escapeHtml(exercise.name)}</div>
@@ -3853,6 +3859,11 @@ function renderStrengthCard(summary) {
                 ${(sessionFinisher?.exercises || []).map((exercise, exerciseIndex) => `
                   <div class="finisher-exercise">
                     <div class="strength-exercise-meta"><strong>${escapeHtml(exercise.name)}</strong></div>
+                    <div class="finisher-compact-labels">
+                      <span>Wt</span>
+                      <span>Sets</span>
+                      <span>Reps</span>
+                    </div>
                     <div class="finisher-compact-row">
                       <input data-finisher-exercise="${finisher.id}::${exerciseIndex}" data-finisher-field="weight" type="text" inputmode="decimal" placeholder="wt" value="${escapeHtml(String(exercise.weight ?? ""))}">
                       <input data-finisher-exercise="${finisher.id}::${exerciseIndex}" data-finisher-field="setsCompleted" type="number" inputmode="numeric" min="0" max="${exercise.sets}" placeholder="sets" value="${escapeHtml(String(exercise.setsCompleted ?? ""))}">
@@ -3919,6 +3930,14 @@ function renderStrengthCard(summary) {
   }
   for (const input of strengthCard.querySelectorAll("[data-strength-exercise-flag]")) {
     input.addEventListener("change", handleStrengthIncreaseToggle);
+  }
+  for (const detail of strengthCard.querySelectorAll(".strength-exercise")) {
+    detail.addEventListener("toggle", () => {
+      const exerciseName = detail.dataset.exerciseName;
+      if (exerciseName) {
+        runtimeStrengthUi.exerciseOpen[exerciseName] = detail.open;
+      }
+    });
   }
   for (const input of strengthCard.querySelectorAll("[data-finisher-id]")) {
     input.addEventListener("change", handleFinisherToggle);
