@@ -7,8 +7,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Health Quest</title>
-  <link rel="manifest" href="manifest.json?v=4.12.1">
-  <link rel="stylesheet" href="styles.css?v=4.12.1">
+  <link rel="manifest" href="manifest.json?v=4.13.1">
+  <link rel="stylesheet" href="styles.css?v=4.13.1">
 </head>
 <body>
   <div class="app-shell">
@@ -116,6 +116,10 @@
             <input id="entry-exercise" type="number" min="0" max="300" step="5">
           </label>
           <label>
+            <span>Active calories</span>
+            <input id="entry-active-calories" type="number" min="0" max="2500" step="10">
+          </label>
+          <label>
             <span>Weight</span>
             <input id="entry-weight" type="number" min="50" max="500" step="0.1">
           </label>
@@ -133,20 +137,20 @@
           <div class="subheading">Habit Checks</div>
           <label class="checkbox-row"><input id="habit-protein" type="checkbox"> Protein at most meals</label>
           <label class="checkbox-row"><input id="habit-produce" type="checkbox"> 2+ fruit/vegetable hits</label>
-          <label class="checkbox-row"><input id="habit-stopped" type="checkbox"> Stopped before stuffed</label>
-          <label class="checkbox-row"><input id="habit-movement" type="checkbox"> Walked / movement target hit</label>
+          <label class="checkbox-row"><input id="habit-stopped" type="checkbox"> No dessert stacking</label>
+          <label class="checkbox-row"><input id="habit-movement" type="checkbox"> No late eating</label>
         </div>
 
         <div id="food-section" class="food-section">
           <div class="food-legend">
-            <span class="food-key"><strong>Food Structure Score</strong> is now the default model for new logs; legacy meal-scale history remains preserved below and in trends.</span>
-            <span class="food-key"><strong>0</strong> N/A — meal not eaten, fasting, or not applicable</span>
-            <span class="food-key"><strong>1</strong> On track — controlled and intentional</span>
-            <span class="food-key"><strong>2</strong> Slight drift — still in control overall</span>
-            <span class="food-key"><strong>3</strong> Warning — weaker choices or lower control, still mindful</span>
-            <span class="food-key"><strong>4</strong> Overate — ate until full / beyond what was needed</span>
-            <span class="food-key"><strong>5</strong> Stuffed — fully off track, clear loss of control</span>
-            <span class="food-key">This scale is about control, awareness, and alignment with intent, not just healthy vs unhealthy food.</span>
+            <span class="food-key"><strong>Meal Structure</strong> is the default food model for new logs; legacy meal-scale history remains preserved below and in trends.</span>
+            <span class="food-key"><strong>0</strong> N/A - meal not eaten, skipped, or not applicable</span>
+            <span class="food-key"><strong>1</strong> On track - ate with control, appropriate portion, no real drift</span>
+            <span class="food-key"><strong>2</strong> Solid - not ideal, but still handled like an adult</span>
+            <span class="food-key"><strong>3</strong> Drift - portions or food quality got loose, but awareness remained</span>
+            <span class="food-key"><strong>4</strong> Full - ate until full instead of stopping at enough</span>
+            <span class="food-key"><strong>5</strong> Stuffed - clearly overdid it and felt it</span>
+            <span class="food-key">This scale is about control, portion awareness, and drift, not abstract purity.</span>
           </div>
           <div id="food-log" class="food-log"></div>
         </div>
@@ -237,7 +241,7 @@
     </footer>
   </div>
 
-  <script src="exercise-help.js?v=4.12.1"></script>
-  <script src="app.js?v=4.12.1"></script>
+  <script src="exercise-help.js?v=4.13.1"></script>
+  <script src="app.js?v=4.13.1"></script>
 </body>
 </html>

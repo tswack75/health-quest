@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.12.1";
+const APP_VERSION = "v4.13.1";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -31,20 +31,26 @@ const mealBehaviorItems = [
     weight: 0.15,
   },
 ];
+const alcoholOptions = [
+  { value: "none", label: "None" },
+  { value: "1", label: "1 drink" },
+  { value: "2", label: "2 drinks" },
+  { value: "3plus", label: "3+ drinks" },
+];
 const mealScoreOptions = [
-  { value: 0, shortLabel: "Skipped", label: "Did not eat / skipped" },
-  { value: 1, shortLabel: "1 On track", label: "On-plan, controlled, high-quality" },
-  { value: 2, shortLabel: "2 Slight drift", label: "Good food or slightly off-plan with control" },
-  { value: 3, shortLabel: "3 Mindful drift", label: "Off-plan but still somewhat mindful" },
-  { value: 4, shortLabel: "4 Overate", label: "Ate until full, low awareness" },
-  { value: 5, shortLabel: "5 Stuffed", label: "Stuffed / loss of control" },
+  { value: 0, shortLabel: "0 N/A", label: "Skipped / N/A", helper: "Did not eat, skipped, or not applicable." },
+  { value: 1, shortLabel: "1 On track", label: "On track", helper: "Ate with control. Appropriate portion. No real drift." },
+  { value: 2, shortLabel: "2 Solid", label: "Controlled, not perfect", helper: "Not ideal, but still handled like an adult." },
+  { value: 3, shortLabel: "3 Drift", label: "Mindful drift", helper: "Started drifting, but did not fully lose the wheel." },
+  { value: 4, shortLabel: "4 Full", label: "Ate until full", helper: "Ate until full instead of stopping at enough." },
+  { value: 5, shortLabel: "5 Stuffed", label: "Stuffed", helper: "Clearly overdid it and felt it." },
 ];
 const mealBehaviorQualityMap = {
   0: null,
   1: 100,
-  2: 82,
-  3: 58,
-  4: 24,
+  2: 88,
+  3: 62,
+  4: 22,
   5: 0,
 };
 const healthWeights = {
@@ -137,8 +143,8 @@ const scoringWeights = {
   habits: {
     protein: 3,
     produce: 3,
-    stoppedBeforeStuffed: 3,
-    movement: 1,
+    noDessertStacking: 2,
+    noLateEating: 2,
   },
   bodyMetrics: {
     total: 5,
@@ -164,39 +170,39 @@ const foodOptions = {
   1: {
     shortLabel: "On track",
     label: "On track",
-    description: "Ate with control and intention. Food choices and portions were appropriate. No loss of control. Could include treats if handled reasonably.",
+    description: "Ate with control. Appropriate portion. No real drift.",
     quality: 1,
     score: 1,
     bucket: "in_control",
   },
   2: {
-    shortLabel: "Slight drift",
-    label: "Good, but a little off",
-    description: "Either food quality or portions were somewhat off. Still in control overall. No real overeating.",
-    quality: 0.84,
-    score: 0.84,
+    shortLabel: "Solid",
+    label: "Controlled, not perfect",
+    description: "Good food with larger portions, or worse food with solid portion control. Still a real win.",
+    quality: 0.88,
+    score: 0.88,
     bucket: "in_control",
   },
   3: {
-    shortLabel: "Warning",
-    label: "Worse food or less control, but still mindful",
-    description: "Noticeable slip. Ate more than needed or made weaker choices, but still somewhat aware. This is a warning-level score.",
-    quality: 0.5,
-    score: 0.5,
+    shortLabel: "Drift",
+    label: "Worse food, less control, still mindful",
+    description: "Noticeable drift. Portions or food quality got loose, but awareness remained.",
+    quality: 0.58,
+    score: 0.58,
     bucket: "warning",
   },
   4: {
-    shortLabel: "Overate",
+    shortLabel: "Full",
     label: "Ate until full",
-    description: "Clear overeating. Low control during at least part of the eating episode or day. Ate to fullness or beyond what was needed.",
-    quality: 0.16,
-    score: 0.16,
+    description: "Clearly overeaten. Ate to fullness instead of stopping at enough.",
+    quality: 0.22,
+    score: 0.22,
     bucket: "off_track",
   },
   5: {
     shortLabel: "Stuffed",
-    label: "Stuffed myself",
-    description: "Fully off track. Ate well past fullness. Strong loss of control. Physically uncomfortable or clearly overdid it.",
+    label: "Stuffed",
+    description: "Obvious loss of control. Ate well past enough and felt it.",
     quality: 0,
     score: 0,
     bucket: "off_track",
@@ -535,6 +541,7 @@ const importJsonInput = document.getElementById("import-json");
 const entryDateInput = document.getElementById("entry-date");
 const entryStepsInput = document.getElementById("entry-steps");
 const entryExerciseInput = document.getElementById("entry-exercise");
+const entryActiveCaloriesInput = document.getElementById("entry-active-calories");
 const entryWeightInput = document.getElementById("entry-weight");
 const entryBodyFatInput = document.getElementById("entry-body-fat");
 const entryNotesInput = document.getElementById("entry-notes");
@@ -972,6 +979,18 @@ function migrateEntry(dateKey, rawEntry, sourceVersion = 4) {
     mode: rawEntry?.mode || rawEntry?.loggingMode || "full",
     steps: Number(rawEntry?.steps ?? rawEntry?.stepCount ?? rawEntry?.stepTotal) || 0,
     exerciseMinutes: Number(rawEntry?.exerciseMinutes ?? rawEntry?.exercise ?? rawEntry?.exerciseMins ?? rawEntry?.exerciseMinutesTotal) || 0,
+      activeCalories: rawEntry?.activeCalories == null && rawEntry?.moveCalories == null && rawEntry?.appleMoveCalories == null
+        ? null
+        : Number(rawEntry?.activeCalories ?? rawEntry?.moveCalories ?? rawEntry?.appleMoveCalories),
+      alcohol: alcoholOptions.some((option) => option.value === rawEntry?.alcohol)
+        ? rawEntry.alcohol
+        : rawEntry?.alcoholDrinks === 1
+          ? "1"
+          : rawEntry?.alcoholDrinks === 2
+            ? "2"
+            : rawEntry?.alcoholDrinks >= 3
+              ? "3plus"
+              : null,
       weight: rawEntry?.weight == null && rawEntry?.weightLbs == null && rawEntry?.scaleWeight == null ? null : Number(rawEntry?.weight ?? rawEntry?.weightLbs ?? rawEntry?.scaleWeight),
       bodyFat: rawEntry?.bodyFat == null && rawEntry?.bodyFatPct == null && rawEntry?.bodyFatPercent == null ? null : Number(rawEntry?.bodyFat ?? rawEntry?.bodyFatPct ?? rawEntry?.bodyFatPercent),
       notes: typeof (rawEntry?.notes ?? rawEntry?.note) === "string" ? String(rawEntry?.notes ?? rawEntry?.note).slice(0, 120) : "",
@@ -987,6 +1006,8 @@ function migrateEntry(dateKey, rawEntry, sourceVersion = 4) {
       produce: Boolean(sourceHabits?.produce ?? rawEntry?.produceHits),
       stoppedBeforeStuffed: Boolean(sourceHabits?.stoppedBeforeStuffed ?? rawEntry?.stoppedBeforeStuffed),
       movement: Boolean(sourceHabits?.movement ?? rawEntry?.movementTargetHit),
+      noDessertStacking: Boolean(sourceHabits?.noDessertStacking ?? rawEntry?.noDessertStacking),
+      noLateEating: Boolean(sourceHabits?.noLateEating ?? rawEntry?.noLateEating),
     },
   };
 }
@@ -1205,13 +1226,16 @@ function hydrateEntryForm(dateKey) {
   entryDateInput.value = dateKey;
   entryStepsInput.value = entry.steps || "";
   entryExerciseInput.value = entry.exerciseMinutes || "";
+  if (entryActiveCaloriesInput) {
+    entryActiveCaloriesInput.value = entry.activeCalories ?? "";
+  }
   entryWeightInput.value = entry.weight ?? "";
   entryBodyFatInput.value = entry.bodyFat ?? "";
   entryNotesInput.value = entry.notes || "";
   habitProteinInput.checked = entry.habits.protein;
   habitProduceInput.checked = entry.habits.produce;
-  habitStoppedInput.checked = entry.habits.stoppedBeforeStuffed;
-  habitMovementInput.checked = entry.habits.movement;
+  habitStoppedInput.checked = entry.habits.noDessertStacking ?? entry.habits.stoppedBeforeStuffed;
+  habitMovementInput.checked = entry.habits.noLateEating ?? false;
 }
 
 function getEntry(dateKey) {
@@ -1220,6 +1244,8 @@ function getEntry(dateKey) {
     mode: "full",
     steps: 0,
     exerciseMinutes: 0,
+    activeCalories: null,
+    alcohol: "none",
     weight: null,
       bodyFat: null,
       notes: "",
@@ -1235,6 +1261,8 @@ function getEntry(dateKey) {
       produce: false,
       stoppedBeforeStuffed: false,
       movement: false,
+      noDessertStacking: false,
+      noLateEating: false,
     },
     ...(state.entries[dateKey] || {}),
     food: {
@@ -1254,6 +1282,8 @@ function getEntry(dateKey) {
       produce: Boolean((state.entries[dateKey] || {}).habits?.produce),
       stoppedBeforeStuffed: Boolean((state.entries[dateKey] || {}).habits?.stoppedBeforeStuffed),
       movement: Boolean((state.entries[dateKey] || {}).habits?.movement),
+      noDessertStacking: Boolean((state.entries[dateKey] || {}).habits?.noDessertStacking),
+      noLateEating: Boolean((state.entries[dateKey] || {}).habits?.noLateEating),
     },
   };
 }
@@ -1329,11 +1359,15 @@ function saveDailyEntry() {
     : shouldUseStructuredFoodUI(existing) || dateKey >= FOOD_SCORING_UPDATE_DATE
       ? "structure-v1"
       : (existing.foodModel || "legacy");
+  const activeCalories = parseOptionalNumber(document.getElementById("today-active-calories")?.value);
+  const alcohol = document.getElementById("today-alcohol")?.value || existing.alcohol || "none";
   state.entries[dateKey] = {
     date: dateKey,
     mode: "full",
     steps: clampNumber(entryStepsInput.value, 0, 100000, 0),
     exerciseMinutes: clampNumber(entryExerciseInput.value, 0, 300, 0),
+    activeCalories,
+    alcohol: alcoholOptions.some((option) => option.value === alcohol) ? alcohol : "none",
       weight: parseOptionalNumber(entryWeightInput.value),
       bodyFat: parseOptionalNumber(entryBodyFatInput.value),
       notes: (entryNotesInput.value || "").trim().slice(0, 120),
@@ -1351,10 +1385,12 @@ function saveDailyEntry() {
       foodStructure: foodModel === "structure-v1" ? readFoodStructureForm(existing.foodStructure) : existing.foodStructure,
       mealBehavior: foodModel === "meal-v2" ? readMealBehaviorForm(existing.mealBehavior) : existing.mealBehavior,
     habits: {
-      protein: habitProteinInput.checked,
-      produce: habitProduceInput.checked,
-      stoppedBeforeStuffed: habitStoppedInput.checked,
-      movement: habitMovementInput.checked,
+      protein: Boolean(document.getElementById("today-habit-protein")?.checked),
+      produce: Boolean(document.getElementById("today-habit-produce")?.checked),
+      stoppedBeforeStuffed: Boolean(document.getElementById("today-habit-dessert")?.checked),
+      movement: existing.habits?.movement ?? false,
+      noDessertStacking: Boolean(document.getElementById("today-habit-dessert")?.checked),
+      noLateEating: Boolean(document.getElementById("today-habit-late")?.checked),
     },
   };
 
@@ -1573,6 +1609,7 @@ function renderFoodLog() {
                   </label>
                 `).join("")}
               </div>
+              <div class="strength-exercise-meta">${escapeHtml(mealScoreOptions.find((option) => option.value === meal.score)?.helper || "Score meals by control and portion awareness, not purity.")}</div>
               <div class="meal-flag-row">
                 <label class="checkbox-row compact"><input id="meal-confidence-${item.key}" type="checkbox" ${meal.confidence ? "checked" : ""}> In control</label>
                 <label class="checkbox-row compact"><input id="meal-protein-${item.key}" type="checkbox" ${meal.protein ? "checked" : ""}> Protein anchor</label>
@@ -1782,14 +1819,17 @@ function computeSummary() {
   const loggedEntries = orderedEntries.map((entry, index) => scoreDay(entry, { priorEntries: orderedEntries.slice(0, index) }));
 
   const timelineFilled = buildFilledTimeline(loggedEntries);
+  const completedTimeline = getCompletedDaysThroughYesterday(timelineFilled);
   const xpTimeline = buildXpTimeline(loggedEntries);
   const totalXp = xpTimeline.reduce((sum, day) => sum + day.xpEarned, 0);
   const level = getLevelFromXp(totalXp);
   const nextLevel = level + 1;
   const nextLevelXp = getXpForLevel(nextLevel);
   const xpToNext = getXpToNextLevel(totalXp);
-  const regularStreak = calculateStreak(timelineFilled, (day) => day.totalScore >= 55);
-  const eliteStreak = calculateStreak(timelineFilled, (day) => day.totalScore >= dayThresholds.win);
+  // Current streaks intentionally stop at yesterday so an incomplete today does not
+  // break visible momentum before the user has had a chance to finish the day.
+  const regularStreak = calculateStreak(completedTimeline, (day) => day.totalScore >= 55);
+  const eliteStreak = calculateStreak(completedTimeline, (day) => day.totalScore >= dayThresholds.win);
   const bestRegularStreak = calculateBestStreak(timelineFilled, (day) => day.totalScore >= 55);
   const bestEliteStreak = calculateBestStreak(timelineFilled, (day) => day.totalScore >= dayThresholds.win);
   const weekly = computeWeeklyMetrics(loggedEntries);
@@ -1870,9 +1910,10 @@ function getRecentFoodScores(entries, limit = 14) {
 }
 
 function getFoodSuccessStreak(entries, threshold = 4) {
+  const completedEntries = getCompletedDaysThroughYesterday(entries);
   let streak = 0;
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const day = entries[index];
+  for (let index = completedEntries.length - 1; index >= 0; index -= 1) {
+    const day = completedEntries[index];
     if (day.mode !== "full") {
       continue;
     }
@@ -2247,12 +2288,16 @@ function getDraftEntry() {
   const dateKey = getSelectedDateKey();
   const existing = getEntry(dateKey);
   const foodModel = existing.foodModel || (dateKey >= FOOD_MODEL_V2_DATE ? "meal-v2" : dateKey >= FOOD_SCORING_UPDATE_DATE ? "structure-v1" : "legacy");
+  const activeCalories = parseOptionalNumber(document.getElementById("today-active-calories")?.value);
+  const alcohol = document.getElementById("today-alcohol")?.value || existing.alcohol || "none";
   return {
     ...existing,
     date: dateKey,
     mode: "full",
     steps: clampNumber(entryStepsInput.value, 0, 100000, 0),
     exerciseMinutes: clampNumber(entryExerciseInput.value, 0, 300, 0),
+      activeCalories,
+      alcohol: alcoholOptions.some((option) => option.value === alcohol) ? alcohol : "none",
       weight: parseOptionalNumber(entryWeightInput.value),
       bodyFat: parseOptionalNumber(entryBodyFatInput.value),
       notes: (entryNotesInput.value || "").trim().slice(0, 120),
@@ -2270,10 +2315,12 @@ function getDraftEntry() {
       foodStructure: foodModel === "structure-v1" ? readFoodStructureForm(existing.foodStructure) : existing.foodStructure,
       mealBehavior: foodModel === "meal-v2" ? readMealBehaviorForm(existing.mealBehavior) : existing.mealBehavior,
     habits: {
-      protein: habitProteinInput.checked,
-      produce: habitProduceInput.checked,
-      stoppedBeforeStuffed: habitStoppedInput.checked,
-      movement: habitMovementInput.checked,
+      protein: Boolean(document.getElementById("today-habit-protein")?.checked),
+      produce: Boolean(document.getElementById("today-habit-produce")?.checked),
+      stoppedBeforeStuffed: Boolean(document.getElementById("today-habit-dessert")?.checked),
+      movement: existing.habits?.movement ?? false,
+      noDessertStacking: Boolean(document.getElementById("today-habit-dessert")?.checked),
+      noLateEating: Boolean(document.getElementById("today-habit-late")?.checked),
     },
   };
 }
@@ -2295,6 +2342,7 @@ function scoreFood(entry) {
     const severeMeals = mealBehaviorItems.filter((item) => Number(mealBehavior[item.key]?.score) === 5).length;
     const roughMeals = mealBehaviorItems.filter((item) => Number(mealBehavior[item.key]?.score) >= 4).length;
     const proteinAnchors = mealBehaviorItems.filter((item) => mealBehavior[item.key]?.protein).length;
+    const alcoholPenalty = getAlcoholPenalty(entry.alcohol);
     let nutritionScore = weightedAverage;
     if (severeMeals) {
       nutritionScore -= 12;
@@ -2302,6 +2350,7 @@ function scoreFood(entry) {
     if (roughMeals >= 2) {
       nutritionScore -= 10;
     }
+    nutritionScore -= alcoholPenalty;
     nutritionScore = clampNumber(nutritionScore, 0, 100, 0);
     const foodPoints = Math.round((nutritionScore / 100) * scoringWeights.food.total);
     const foodPerformanceScore = getMealBehaviorPerformanceScale(nutritionScore);
@@ -2314,19 +2363,20 @@ function scoreFood(entry) {
       foodPerformanceScore,
       allMealsLogged,
       proteinAnchors,
+      alcoholPenalty,
       foodCoachingCopy: nutritionScore >= 85
-        ? "Strong nutrition day. Keep living at a 1."
+        ? "Strong nutrition day. Keep living at a 1 or 2."
         : nutritionScore >= 70
           ? "Mostly steady. One cleaner decision would tighten it up."
-          : nutritionScore >= 55
-            ? "Mixed day. Aim to stabilize the next meal."
+        : nutritionScore >= 55
+            ? "There was some drift. Tighten the next meal."
             : "The day drifted. Reset with the next decision, not with guilt.",
       foodStructureRating: nutritionScore >= 85
         ? "strong, controlled day"
         : nutritionScore >= 70
-          ? "steady day"
-          : nutritionScore >= 55
-            ? "mixed day"
+          ? "solid real-world day"
+        : nutritionScore >= 55
+            ? "noticeable drift"
             : "reactive day",
       foodIsProvisional: !allMealsLogged,
       coreAnsweredCount: loggedMeals.length,
@@ -2397,12 +2447,87 @@ function scoreFood(entry) {
 }
 
 function scoreHabits(entry) {
+  const noDessertStacking = entry.habits.noDessertStacking ?? entry.habits.stoppedBeforeStuffed ?? false;
+  const noLateEating = entry.habits.noLateEating ?? false;
   return (
     (entry.habits.protein ? scoringWeights.habits.protein : 0) +
     (entry.habits.produce ? scoringWeights.habits.produce : 0) +
-    (entry.habits.stoppedBeforeStuffed ? scoringWeights.habits.stoppedBeforeStuffed : 0) +
-    (entry.habits.movement ? scoringWeights.habits.movement : 0)
+    (noDessertStacking ? scoringWeights.habits.noDessertStacking : 0) +
+    (noLateEating ? scoringWeights.habits.noLateEating : 0)
   );
+}
+
+function getMovementTier(activeCalories) {
+  const calories = Number(activeCalories || 0);
+  if (calories >= 700) {
+    return "target_hit";
+  }
+  if (calories >= 600) {
+    return "strong";
+  }
+  if (calories >= 400) {
+    return "decent";
+  }
+  return "low";
+}
+
+function getMovementLabel(activeCalories, legacyMovement = null, entry = null) {
+  if (activeCalories != null) {
+    const tier = getMovementTier(activeCalories);
+    if (tier === "target_hit") {
+      return "Target Hit";
+    }
+    if (tier === "strong") {
+      return "Strong";
+    }
+    if (tier === "decent") {
+      return "Decent";
+    }
+    return "Low";
+  }
+  if (legacyMovement === true) {
+    return "Legacy target hit";
+  }
+  if (legacyMovement === false) {
+    return "Legacy no hit";
+  }
+  if ((entry?.steps || 0) > 0 || (entry?.exerciseMinutes || 0) > 0) {
+    return "Legacy movement";
+  }
+  return "No movement data";
+}
+
+function getMovementScoreFromCalories(activeCalories) {
+  if (activeCalories == null) {
+    return null;
+  }
+  return clampNumber(Math.round((Number(activeCalories) / 700) * 100), 0, 100, 0);
+}
+
+function getMovementScore(entry, stepPoints, exercisePoints) {
+  const calorieScore = getMovementScoreFromCalories(entry.activeCalories);
+  if (calorieScore != null) {
+    return calorieScore;
+  }
+  if (entry.habits?.movement === true) {
+    return 100;
+  }
+  if (entry.habits?.movement === false && !(entry.steps || 0) && !(entry.exerciseMinutes || 0)) {
+    return 35;
+  }
+  const stepNormalized = scoringWeights.steps ? (stepPoints / scoringWeights.steps) * 100 : 0;
+  const exerciseNormalized = scoringWeights.exercise ? (exercisePoints / scoringWeights.exercise) * 100 : 0;
+  return Math.round((stepNormalized * 0.55) + (exerciseNormalized * 0.45));
+}
+
+function getAlcoholPenalty(alcohol) {
+  if (alcohol === "3plus") {
+    return 4;
+  }
+  if (alcohol === "2") {
+    return 1;
+  }
+  return 0;
 }
 
 function getTrailingMetricAverage(priorEntries, key, windowSize = 7) {
@@ -2478,12 +2603,6 @@ function getConsistencyScore(entry, habitPoints, food) {
   return Math.round((habitScore * 0.7) + (loggingScore * 0.3));
 }
 
-function getMovementScore(stepPoints, exercisePoints) {
-  const stepNormalized = scoringWeights.steps ? (stepPoints / scoringWeights.steps) * 100 : 0;
-  const exerciseNormalized = scoringWeights.exercise ? (exercisePoints / scoringWeights.exercise) * 100 : 0;
-  return Math.round((stepNormalized * 0.55) + (exerciseNormalized * 0.45));
-}
-
 function scoreDay(entry, context = {}) {
   const dayMode = entry.mode || "full";
   const priorEntries = context.priorEntries || [];
@@ -2492,7 +2611,8 @@ function scoreDay(entry, context = {}) {
   const food = scoreFood(entry);
   const habitPoints = scoreHabits(entry);
   const bodyMetrics = scoreBodyMetrics(entry, priorEntries);
-  const movementScore = getMovementScore(stepPoints, exercisePoints);
+  const movementScore = getMovementScore(entry, stepPoints, exercisePoints);
+  const movementLabel = getMovementLabel(entry.activeCalories, entry.activeCalories == null ? entry.habits?.movement : null, entry);
   const nutritionScore = dayMode === "full"
     ? (entry.foodModel === "meal-v2" ? food.nutritionScore : Math.round((food.foodPoints / Math.max(1, scoringWeights.food.total)) * 100))
     : 0;
@@ -2524,6 +2644,8 @@ function scoreDay(entry, context = {}) {
     bodyMetricPoints: bodyMetrics.bodyMetricPoints,
     habitPoints,
     movementScore,
+    movementLabel,
+    movementTier: entry.activeCalories != null ? getMovementTier(entry.activeCalories) : null,
     strengthScore,
     consistencyScore,
     dailyHealthScore,
@@ -2541,6 +2663,7 @@ function scoreDay(entry, context = {}) {
 
 function getGoalBonus(entry, food) {
   const hasMeaningfulLogging = Boolean(
+    (entry.activeCalories || 0) > 0 ||
     (entry.steps || 0) > 0 ||
     (entry.exerciseMinutes || 0) > 0 ||
     entry.weight != null ||
@@ -2609,6 +2732,11 @@ function calculateStreak(days, qualifies) {
     streak += 1;
   }
   return streak;
+}
+
+function getCompletedDaysThroughYesterday(days) {
+  const todayKey = getTodayKey();
+  return days.filter((day) => day.date < todayKey);
 }
 
 function calculateBestStreak(days, qualifies) {
@@ -2712,10 +2840,10 @@ function pearsonCorrelation(xValues, yValues) {
 function buildCorrelationInsight(loggedEntries) {
   const recentEntries = loggedEntries.slice(-30);
   const metrics = [
-    { key: "steps", label: "steps" },
+    { key: "activeCalories", label: "active calories" },
     { key: "exerciseMinutes", label: "exercise" },
-    { key: "foodPoints", label: "food score" },
-    { key: "totalScore", label: "total score" },
+    { key: "nutritionScore", label: "food control" },
+    { key: "dailyHealthScore", label: "health score" },
   ];
 
   const ranked = metrics.map((metric) => {
@@ -2772,6 +2900,7 @@ function computeWeeklyMetrics(loggedEntries) {
   const bodyFatAverage = average(inWindow.filter((day) => day.bodyFat != null).map((day) => day.bodyFat));
   const loggedDays = inWindow.length;
   const recentLoggedDays = getRecentLoggedDays(loggedEntries, 7);
+  const recentAlcoholDays = recentLoggedDays.filter((day) => day.alcohol && day.alcohol !== "none");
 
   const allWeeklyWeightAverages = buildRollingAverageSeries(loggedEntries, "weight");
   const latestWeeklyWeightAverage = allWeeklyWeightAverages.length ? allWeeklyWeightAverages[allWeeklyWeightAverages.length - 1].value : null;
@@ -2817,9 +2946,11 @@ function computeWeeklyMetrics(loggedEntries) {
     prior14DayWeightAvg: priorWeight14,
     rolling14DayBodyFatAvg: latestBodyFat14,
     prior14DayBodyFatAvg: priorBodyFat14,
+    avgActiveCalories: getMetricAverage(recentLoggedDays, "activeCalories"),
     avgStepsLogged: getMetricAverage(recentLoggedDays, "steps"),
     avgExerciseLogged: getMetricAverage(recentLoggedDays, "exerciseMinutes"),
     avgFoodPointsLogged: getMetricAverage(recentLoggedDays.filter((day) => day.mode === "full"), "foodPoints"),
+    alcoholDaysLogged: recentAlcoholDays.length,
     correlationInsight: buildCorrelationInsight(loggedEntries),
   };
 }
@@ -3439,14 +3570,14 @@ function getTodayBreakdownNote(day) {
     return "Some of today's score is still provisional because the day is not fully logged.";
   }
 
-  const movementGap = (scoringWeights.steps - day.stepPoints) + (scoringWeights.exercise - day.exercisePoints);
+  const movementGap = 100 - (day.movementScore ?? 0);
   const foodGap = day.mode === "full" ? scoringWeights.food.total - day.foodPoints : -Infinity;
 
   if (foodGap > movementGap && foodGap >= 8) {
     return "Food quality / control is the biggest drag on today's score.";
   }
 
-  if (movementGap >= 12) {
+  if (movementGap >= 25) {
     return "Today's score ceiling is being limited mostly by movement.";
   }
 
@@ -3517,12 +3648,22 @@ function renderTodayCard(summary) {
             <input id="today-date" type="date" value="${escapeHtml(getSelectedDateKey())}">
           </label>
           <label class="quick-field">
+            <span>Active Cal</span>
+            <input id="today-active-calories" type="number" min="0" max="2500" step="10" value="${today.activeCalories ?? ""}">
+          </label>
+          <label class="quick-field">
             <span>Steps</span>
             <input id="today-steps" type="number" min="0" max="100000" step="100" value="${today.steps || ""}">
           </label>
           <label class="quick-field">
             <span>Exercise</span>
             <input id="today-exercise" type="number" min="0" max="300" step="5" value="${today.exerciseMinutes || ""}">
+          </label>
+          <label class="quick-field">
+            <span>Alcohol</span>
+            <select id="today-alcohol">
+              ${alcoholOptions.map((option) => `<option value="${option.value}" ${(today.alcohol || "none") === option.value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+            </select>
           </label>
           <label class="quick-field">
             <span>Weight</span>
@@ -3537,14 +3678,14 @@ function renderTodayCard(summary) {
         <div class="today-habits">
           <label class="checkbox-row compact"><input id="today-habit-protein" type="checkbox" ${today.habits.protein ? "checked" : ""}> Protein</label>
           <label class="checkbox-row compact"><input id="today-habit-produce" type="checkbox" ${today.habits.produce ? "checked" : ""}> Produce</label>
-          <label class="checkbox-row compact"><input id="today-habit-stopped" type="checkbox" ${today.habits.stoppedBeforeStuffed ? "checked" : ""}> Stopped before stuffed</label>
-          <label class="checkbox-row compact"><input id="today-habit-movement" type="checkbox" ${today.habits.movement ? "checked" : ""}> Movement target</label>
+          <label class="checkbox-row compact"><input id="today-habit-dessert" type="checkbox" ${(today.habits.noDessertStacking ?? today.habits.stoppedBeforeStuffed) ? "checked" : ""}> No dessert stacking</label>
+          <label class="checkbox-row compact"><input id="today-habit-late" type="checkbox" ${today.habits.noLateEating ? "checked" : ""}> No late eating</label>
         </div>
           ${showingMealBehavior ? `
             <div class="today-meals">
               <div class="today-meals-header">
                 <span>Meal Structure</span>
-                <span class="today-meals-hint">Weighted by breakfast, lunch, dinner, and snacks.</span>
+                <span class="today-meals-hint">1-2 is strong. 3 is drift. 4-5 is overeating.</span>
               </div>
               <div class="meal-behavior-grid compact">
                 ${mealBehaviorItems.map((item) => {
@@ -3559,7 +3700,7 @@ function renderTodayCard(summary) {
                         ${mealScoreOptions.map((option) => `
                           <label class="food-level-chip ${meal.score === option.value ? "active" : ""}">
                             <input type="radio" name="today-meal-score-${item.key}" value="${option.value}" ${meal.score === option.value ? "checked" : ""}>
-                            <span>${escapeHtml(option.value === 1 ? "On track" : option.value === 2 ? "Good / controlled" : option.value === 3 ? "Mindful drift" : option.value === 4 ? "Full" : option.value === 5 ? "Stuffed" : "Skipped")}</span>
+                            <span>${escapeHtml(option.value === 1 ? "On track" : option.value === 2 ? "Solid" : option.value === 3 ? "Drift" : option.value === 4 ? "Full" : option.value === 5 ? "Stuffed" : "N/A")}</span>
                           </label>
                         `).join("")}
                       </div>
@@ -3573,6 +3714,7 @@ function renderTodayCard(summary) {
               </div>
               <div class="food-structure-summary compact">
                 <div class="food-structure-score">Nutrition Score: ${formatMaybe(mealBehaviorPreview.nutritionScore, 0)}</div>
+                <div class="food-structure-hint">Movement: ${escapeHtml(today.movementLabel || getMovementLabel(today.activeCalories, today.habits?.movement, today))}${today.activeCalories != null ? ` (${today.activeCalories} cal)` : ""}</div>
               </div>
               <label class="quick-field quick-notes">
                 <span>Food note</span>
@@ -3632,13 +3774,15 @@ function wireTodayQuickInputs() {
   syncQuickInput("today-date", entryDateInput, true);
   syncQuickInput("today-steps", entryStepsInput);
   syncQuickInput("today-exercise", entryExerciseInput);
+  syncQuickInput("today-active-calories", null);
   syncQuickInput("today-weight", entryWeightInput);
   syncQuickInput("today-body-fat", entryBodyFatInput);
   syncQuickInput("today-notes", entryNotesInput);
+  syncQuickInput("today-alcohol", null);
   syncQuickCheckbox("today-habit-protein", habitProteinInput);
   syncQuickCheckbox("today-habit-produce", habitProduceInput);
-  syncQuickCheckbox("today-habit-stopped", habitStoppedInput);
-  syncQuickCheckbox("today-habit-movement", habitMovementInput);
+  syncQuickCheckbox("today-habit-dessert", null);
+  syncQuickCheckbox("today-habit-late", null);
   syncQuickInput("today-food-structure-note", document.getElementById("food-structure-note"));
   syncQuickInput("today-meal-behavior-note", document.getElementById("meal-behavior-note"));
 }
@@ -3681,14 +3825,18 @@ function repeatLastMeals() {
 
 function syncQuickInput(sourceId, targetInput, rerender = false) {
   const source = document.getElementById(sourceId);
-  if (!source || !targetInput) {
+  if (!source) {
     return;
   }
   source.addEventListener("input", () => {
-    targetInput.value = source.value;
+    if (targetInput) {
+      targetInput.value = source.value;
+    }
   });
   source.addEventListener("change", () => {
-    targetInput.value = source.value;
+    if (targetInput) {
+      targetInput.value = source.value;
+    }
     if (rerender) {
       handleDateChange();
     } else {
@@ -3699,11 +3847,13 @@ function syncQuickInput(sourceId, targetInput, rerender = false) {
 
 function syncQuickCheckbox(sourceId, targetInput) {
   const source = document.getElementById(sourceId);
-  if (!source || !targetInput) {
+  if (!source) {
     return;
   }
   source.addEventListener("change", () => {
-    targetInput.checked = source.checked;
+    if (targetInput) {
+      targetInput.checked = source.checked;
+    }
     render();
   });
 }
@@ -3716,9 +3866,10 @@ function renderWeeklySummary(summary) {
     statCard("7-day Health Score", formatMaybe(summary.weekly.latestHealth7, 0), `${summary.weekly.loggedDays} days logged this week`),
     statCard("14-day Weight Avg", `${getTrendArrow(summary.weekly.rolling14DayWeightAvg, summary.weekly.prior14DayWeightAvg)} ${formatMaybe(summary.weekly.rolling14DayWeightAvg, 1)}`, `Best 7-day: ${formatMaybe(summary.weekly.bestSevenDayWeightAverage, 1)} | Gap: ${formatSigned(summary.weekly.gapFromBestWeightAverage, 1)}`),
     statCard("14-day Body Fat Avg", `${getTrendArrow(summary.weekly.rolling14DayBodyFatAvg, summary.weekly.prior14DayBodyFatAvg)} ${formatMaybe(summary.weekly.rolling14DayBodyFatAvg, 1, "%")}`, `Goal: ${state.settings.bodyFatGoal}%`),
-    statCard("7-day Avg Steps", formatMaybe(summary.weekly.avgStepsLogged), `Goal: ${state.settings.stepGoal}`),
+    statCard("7-day Active Calories", formatMaybe(summary.weekly.avgActiveCalories, 0), "Move calories, averaged across recent logged days"),
     statCard("7-day Avg Exercise", formatMaybe(summary.weekly.avgExerciseLogged), `Goal: ${state.settings.exerciseGoal} min`),
     statCard("7-day Avg Nutrition", formatMaybe(summary.weekly.avgFoodPointsLogged), `Target: ${scoringWeights.food.total}`),
+    statCard("Alcohol Days", `${summary.weekly.alcoholDaysLogged}/7`, "Recent days with drinks logged"),
   ];
 
   summaryStats.innerHTML = statCards.join("");
@@ -4215,6 +4366,10 @@ function buildSignals(loggedEntries, weekly, strengthSummary) {
   if (workoutsThisWeek >= 2) {
     signals.push("Strength consistency is improving.");
   }
+  const recentHighAlcoholDays = loggedEntries.slice(-14).filter((day) => day.alcohol === "3plus").length;
+  if (recentHighAlcoholDays >= 2) {
+    signals.push("A few 3+ drink nights have shown up recently. Watch for dessert stacking and next-day noise.");
+  }
   if (weekly.recentHealthVariance != null && weekly.recentHealthVariance > 18) {
     signals.push("High-variance days still correlate with noisier weigh-ins. Consistency is doing more for you than intensity.");
   }
@@ -4251,9 +4406,10 @@ function getCurrentWinStreak(days) {
 }
 
 function buildNextMilestone(loggedEntries, strengthSummary) {
-  const winStreak = getCurrentWinStreak(loggedEntries);
+  const completedDays = getCompletedDaysThroughYesterday(loggedEntries);
+  const winStreak = getCurrentWinStreak(completedDays);
   const workoutsThisWeek = strengthSummary.progress.workoutsThisWeek.length;
-  const noStuffed14 = getNoStuffedDays(loggedEntries.slice(-14));
+  const noStuffed14 = getNoStuffedDays(completedDays.slice(-14));
   if (workoutsThisWeek < state.strengthSettings.daysPerWeek) {
     return `${state.strengthSettings.daysPerWeek - workoutsThisWeek} more workout${workoutsThisWeek + 1 === state.strengthSettings.daysPerWeek ? "" : "s"} for a full ${state.strengthSettings.daysPerWeek}/${state.strengthSettings.daysPerWeek} week.`;
   }
@@ -4267,8 +4423,9 @@ function buildNextMilestone(loggedEntries, strengthSummary) {
 }
 
 function computeMomentumSummary(loggedEntries, weekly, strengthSummary) {
-  const recentWeek = loggedEntries.slice(-7);
-  const currentWinStreak = getCurrentWinStreak(loggedEntries);
+  const completedDays = getCompletedDaysThroughYesterday(loggedEntries);
+  const recentWeek = completedDays.slice(-7);
+  const currentWinStreak = getCurrentWinStreak(completedDays);
   const workoutProgress = `${strengthSummary.progress.workoutsThisWeek.length}/${state.strengthSettings.daysPerWeek}`;
   const onTrackDaysWeek = recentWeek.filter((day) => (day.nutritionScore ?? 0) >= 70 || (day.foodStructureScore ?? 0) >= 4).length;
   const mealLogsWeek = recentWeek.filter((day) => day.foodModel === "meal-v2" ? Object.values(day.mealBehavior || {}).every((meal) => meal?.score != null) : day.foodModel === "structure-v1" ? (day.answeredCheckpoints ?? 0) >= 5 : day.answeredMeals?.length >= 3).length;
@@ -4290,7 +4447,7 @@ function computeMomentumSummary(loggedEntries, weekly, strengthSummary) {
     { title: "3 straight wins", detail: "Stack three realistic good days in a row.", unlocked: currentWinStreak >= 3 },
     { title: "7 straight logs", detail: "Keep the system honest for a full week.", unlocked: mealLogsWeek >= 7 },
     { title: "3/3 workout week", detail: "Finish the full lifting week.", unlocked: strengthSummary.progress.workoutsThisWeek.length >= state.strengthSettings.daysPerWeek },
-    { title: "2 weeks with no stuffed days", detail: "Reduce major drift for 14 straight days.", unlocked: getNoStuffedDays(loggedEntries.slice(-14)) >= 14 },
+    { title: "2 weeks with no stuffed days", detail: "Reduce major drift for 14 straight days.", unlocked: getNoStuffedDays(completedDays.slice(-14)) >= 14 },
     { title: "Best rolling 7-day weight average", detail: "Set a new best short-term trend.", unlocked: weekly.gapFromBestWeightAverage != null && weekly.gapFromBestWeightAverage <= 0.2 },
   ];
   const recap = {
@@ -4325,7 +4482,7 @@ function buildWeeklyScorecard(loggedEntries, weekly, strengthSummary) {
   const consistencyScore = Math.round(
     (Math.min(1, strengthSummary.progress.workoutsThisWeek.length / Math.max(1, state.strengthSettings.daysPerWeek)) * 40) +
     (Math.min(1, inControlDays / Math.max(1, eatingAverages.length || 1)) * 35) +
-    (Math.min(1, (weekly.avgStepsLogged || 0) / Math.max(1, state.settings.stepGoal)) * 25)
+    (Math.min(1, (weekly.avgActiveCalories || 0) / 700) * 25)
   );
 
   return {
@@ -4338,7 +4495,7 @@ function buildWeeklyScorecard(loggedEntries, weekly, strengthSummary) {
     bodyFatChange: recentBody.length >= 2 ? recentBody[recentBody.length - 1].bodyFat - recentBody[0].bodyFat : null,
     consistencyScore,
     wentWell: strengthSummary.progress.workoutsThisWeek.length >= 3 ? "You completed all planned training and reinforced capacity." : inControlDays >= 4 ? "Food control held together on most logged days." : "You kept the campaign honest by logging and staying engaged.",
-    slipped: offTrackDays >= 2 ? "Late-day drift showed up more than once." : weekly.avgStepsLogged != null && weekly.avgStepsLogged < state.settings.stepGoal * 0.75 ? "Movement volume fell below target." : "Nothing major slipped, but the edges still need guarding.",
+    slipped: offTrackDays >= 2 ? "Late-day drift showed up more than once." : weekly.avgActiveCalories != null && weekly.avgActiveCalories < 525 ? "Movement volume fell below target." : "Nothing major slipped, but the edges still need guarding.",
     nextFocus: offTrackDays >= 2 ? "Reduce late-day drift." : strengthSummary.progress.workoutsThisWeek.length < state.strengthSettings.daysPerWeek ? "Finish all scheduled strength sessions." : currentRegion.phase === "early" ? "Keep building repeatable structure." : currentRegion.phase === "middle" ? "Protect rhythm and avoid false summits." : "Refine the system without softening standards.",
   };
 }
@@ -4388,6 +4545,7 @@ function exportCsv(type) {
       "lunch_score_v2", "lunch_confidence", "lunch_protein",
       "dinner_score", "dinner_confidence", "dinner_protein",
       "snacks_score", "snacks_confidence", "snacks_protein",
+      "active_calories", "alcohol",
       "breakfast_controlled", "lunch_anchor_meal", "afternoon_snack_controlled", "dinner_portion_controlled", "no_night_eating",
       "food_structure_score", "nutrition_score", "daily_health_score", "food_note", "food_structure_note", "meal_behavior_note"
     ]].concat(
@@ -4411,6 +4569,8 @@ function exportCsv(type) {
         day.mealBehavior?.snacks?.score ?? "",
         day.mealBehavior?.snacks?.confidence ? 1 : 0,
         day.mealBehavior?.snacks?.protein ? 1 : 0,
+        day.activeCalories ?? "",
+        day.alcohol || "",
         day.foodStructure?.breakfastControlled ? 1 : 0,
         day.foodStructure?.lunchAnchorMeal ? 1 : 0,
         day.foodStructure?.afternoonSnackControlled ? 1 : 0,
@@ -4426,8 +4586,8 @@ function exportCsv(type) {
     );
   } else if (type === "body") {
     filename = `health-quest-body-${getTodayKey()}.csv`;
-    rows = [["date", "weight", "body_fat", "steps", "exercise_minutes"]].concat(
-      scored.map((day) => [day.date, day.weight ?? "", day.bodyFat ?? "", day.steps ?? 0, day.exerciseMinutes ?? 0])
+    rows = [["date", "weight", "body_fat", "active_calories", "steps", "exercise_minutes", "alcohol"]].concat(
+      scored.map((day) => [day.date, day.weight ?? "", day.bodyFat ?? "", day.activeCalories ?? "", day.steps ?? 0, day.exerciseMinutes ?? 0, day.alcohol || ""])
     );
   } else if (type === "strength") {
     filename = `health-quest-strength-${getTodayKey()}.csv`;
@@ -4573,7 +4733,7 @@ function buildGuardrails(summary) {
   ) {
     messages.push("Daily scale is noisy. Trend is more stable than today's reading.");
   }
-  if (summary.weekly.avgStepsLogged != null && summary.weekly.avgStepsLogged < state.settings.stepGoal * 0.75) {
+  if (summary.weekly.avgActiveCalories != null && summary.weekly.avgActiveCalories < 525) {
     messages.push("Movement volume has slipped below target.");
   }
   if (summary.weekly.avgExerciseLogged != null && summary.weekly.avgExerciseLogged < state.settings.exerciseGoal * 0.6) {
@@ -4769,11 +4929,13 @@ function renderRecentDays(days) {
           <div class="day-meta">${day.totalScore} pts | ${capitalize(day.dayType)}</div>
         </div>
         <div class="metric-row">
+          <span class="metric-pill">${day.activeCalories != null ? `${day.activeCalories} active cal (${day.movementLabel || getMovementLabel(day.activeCalories, day.habits?.movement, day)})` : (day.movementLabel || getMovementLabel(day.activeCalories, day.habits?.movement, day))}</span>
           <span class="metric-pill">${day.steps || 0} steps</span>
           <span class="metric-pill">${day.exerciseMinutes || 0} min exercise</span>
           ${day.mode === "full" ? `<span class="metric-pill">${day.foodModel === "meal-v2" ? `Nutrition ${formatMaybe(day.nutritionScore, 0)}/100` : day.foodModel === "structure-v1" ? `Food Structure ${day.foodStructureScore || 0}/5` : `Legacy Food ${day.foodPoints}/${scoringWeights.food.total}`}</span>` : ""}
           <span class="metric-pill">Health ${formatMaybe(day.dailyHealthScore ?? day.totalScore, 0)}</span>
           <span class="metric-pill">Habits ${day.habitPoints}/${Object.values(scoringWeights.habits).reduce((sum, value) => sum + value, 0)}</span>
+          ${day.alcohol != null ? `<span class="metric-pill">Alcohol ${escapeHtml(alcoholOptions.find((option) => option.value === day.alcohol)?.label || day.alcohol)}</span>` : ""}
           <span class="metric-pill">${day.weight != null ? `${day.weight} lb` : "No weight"}</span>
           <span class="metric-pill">${day.bodyFat != null ? `${day.bodyFat}% fat` : "No body fat"}</span>
         </div>
