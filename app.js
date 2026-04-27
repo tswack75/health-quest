@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.13.3";
+const APP_VERSION = "v4.14.0";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -66,6 +66,36 @@ const xpRules = {
   highHealthScore: 20,
   proteinBonus: 10,
 };
+const strengthPrimaryCategories = ["Chest", "Shoulders", "Arms", "Legs", "Core", "Back"];
+const strengthTrendThresholds = {
+  improving: 3,
+  declining: -3,
+};
+const strengthExerciseDefinitions = [
+  { name: "Bench Press", type: "weighted", primary: "Chest", secondary: ["Shoulders", "Arms"] },
+  { name: "Dumbbell Press", type: "weighted", primary: "Chest", secondary: ["Shoulders", "Arms"] },
+  { name: "Dumbbell Bench Press", type: "weighted", primary: "Chest", secondary: ["Shoulders", "Arms"] },
+  { name: "Shoulder Press", type: "weighted", primary: "Shoulders", secondary: ["Arms"] },
+  { name: "Light Dumbbell Shoulder Press", type: "weighted", primary: "Shoulders", secondary: ["Arms"] },
+  { name: "Row", type: "weighted", primary: "Back", secondary: ["Arms"] },
+  { name: "One-Arm Dumbbell Row", type: "weighted", primary: "Back", secondary: ["Arms"] },
+  { name: "Curl", type: "weighted", primary: "Arms", secondary: [] },
+  { name: "Dumbbell Curl", type: "weighted", primary: "Arms", secondary: [] },
+  { name: "Triceps Extension", type: "weighted", primary: "Arms", secondary: [] },
+  { name: "Overhead Dumbbell Triceps Extension", type: "weighted", primary: "Arms", secondary: [] },
+  { name: "Squat", type: "weighted", primary: "Legs", secondary: ["Core"] },
+  { name: "Goblet Squat", type: "weighted", primary: "Legs", secondary: ["Core"] },
+  { name: "Lunge", type: "weighted", primary: "Legs", secondary: ["Core"] },
+  { name: "Split Squat", type: "weighted", primary: "Legs", secondary: ["Core"] },
+  { name: "Deadlift", type: "weighted", primary: "Legs", secondary: ["Back", "Core"] },
+  { name: "Romanian Deadlift", type: "weighted", primary: "Legs", secondary: ["Back", "Core"] },
+  { name: "Pushup", type: "bodyweight", primary: "Chest", secondary: ["Shoulders", "Arms"] },
+  { name: "Incline Push-Ups", type: "bodyweight", primary: "Chest", secondary: ["Shoulders", "Arms"] },
+  { name: "Plank", type: "timed", primary: "Core", secondary: [] },
+  { name: "Side Plank", type: "timed", primary: "Core", secondary: [] },
+  { name: "Dead Bug", type: "bodyweight", primary: "Core", secondary: [] },
+  { name: "Glute Bridge", type: "bodyweight", primary: "Legs", secondary: ["Core"] },
+];
 const foodStructureItems = [
   {
     key: "breakfastControlled",
@@ -767,6 +797,7 @@ function createEmptyState() {
     strengthSettings: { ...defaultStrengthSettings },
     strengthPlan: JSON.parse(JSON.stringify(defaultStrengthPlan)),
     strengthHistory: [],
+    strengthLogs: [],
     entries: {},
     rewards: [],
     meta: {
@@ -791,10 +822,11 @@ function createEmptyState() {
 function getStateRichness(candidateState) {
   const entryCount = Object.keys(candidateState?.entries || {}).length;
   const strengthCount = Array.isArray(candidateState?.strengthHistory) ? candidateState.strengthHistory.length : 0;
+  const strengthLogCount = Array.isArray(candidateState?.strengthLogs) ? candidateState.strengthLogs.length : 0;
   const rewardCount = Array.isArray(candidateState?.rewards) ? candidateState.rewards.length : 0;
   const archiveCount = Array.isArray(candidateState?.meta?.storyArchive) ? candidateState.meta.storyArchive.length : 0;
   const settingsWeight = candidateState?.settings ? 1 : 0;
-  return (entryCount * 100) + (strengthCount * 20) + (rewardCount * 5) + archiveCount + settingsWeight;
+  return (entryCount * 100) + (strengthCount * 20) + (strengthLogCount * 5) + (rewardCount * 5) + archiveCount + settingsWeight;
 }
 
 function unwrapImportedState(parsed) {
@@ -823,6 +855,7 @@ function getStateInventory(candidateState) {
     weightDays: entries.filter((entry) => entry.weight != null).length,
     bodyFatDays: entries.filter((entry) => entry.bodyFat != null).length,
     strengthSessions: Array.isArray(candidateState?.strengthHistory) ? candidateState.strengthHistory.length : 0,
+    strengthLogs: Array.isArray(candidateState?.strengthLogs) ? candidateState.strengthLogs.length : 0,
     rewards: Array.isArray(candidateState?.rewards) ? candidateState.rewards.length : 0,
     storyEvents: Array.isArray(candidateState?.meta?.storyArchive) ? candidateState.meta.storyArchive.length : 0,
   };
@@ -888,20 +921,33 @@ function migrateState(parsed, sourceKey) {
     questCompletions: Array.isArray(parsed.meta?.questCompletions) ? parsed.meta.questCompletions : [],
   };
 
+  const migratedStrengthHistory = Array.isArray(parsed.strengthHistory)
+    ? parsed.strengthHistory.map((session) => {
+      try {
+        return migrateStrengthSession(session, strengthPlan);
+      } catch (error) {
+        return null;
+      }
+    }).filter(Boolean)
+    : [];
+
+  const migratedStrengthLogs = Array.isArray(parsed.strengthLogs) && parsed.strengthLogs.length
+    ? parsed.strengthLogs.map((log) => {
+      try {
+        return migrateStrengthLog(log);
+      } catch (error) {
+        return null;
+      }
+    }).filter(Boolean)
+    : migratedStrengthHistory.flatMap((session) => buildStrengthLogsFromSession(session));
+
   const migrated = {
     version: 7,
     settings,
     strengthSettings,
     strengthPlan,
-    strengthHistory: Array.isArray(parsed.strengthHistory)
-      ? parsed.strengthHistory.map((session) => {
-        try {
-          return migrateStrengthSession(session, strengthPlan);
-        } catch (error) {
-          return null;
-        }
-      }).filter(Boolean)
-      : [],
+    strengthHistory: migratedStrengthHistory,
+    strengthLogs: migratedStrengthLogs,
     entries,
     rewards,
     meta,
@@ -956,6 +1002,167 @@ function buildLegacyEntries(parsed) {
   }
 
   return legacy;
+}
+
+function normalizeExerciseKey(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function getStrengthExerciseDefinition(name) {
+  const normalized = normalizeExerciseKey(name);
+  return strengthExerciseDefinitions.find((item) => normalizeExerciseKey(item.name) === normalized) || null;
+}
+
+function parseLoggedNumber(value) {
+  if (value == null || value === "") {
+    return null;
+  }
+  const match = String(value).match(/-?\d+(\.\d+)?/);
+  if (!match) {
+    return null;
+  }
+  const parsed = Number(match[0]);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function inferStrengthExerciseType(name, fallbackType = "weighted") {
+  return getStrengthExerciseDefinition(name)?.type || fallbackType;
+}
+
+function computeStrengthLogDerivedFields(log) {
+  const definition = getStrengthExerciseDefinition(log.exercise);
+  const exerciseType = log.exerciseType || definition?.type || "weighted";
+  const normalizedSets = Array.isArray(log.sets) ? log.sets.map((set) => ({
+    reps: parseLoggedNumber(set?.reps),
+    weight: parseLoggedNumber(set?.weight),
+    seconds: parseLoggedNumber(set?.seconds),
+  })) : [];
+
+  let topSetE1RM = null;
+  let bodyweightScore = null;
+  let timedScore = null;
+
+  if (exerciseType === "weighted") {
+    const e1rms = normalizedSets
+      .filter((set) => set.weight != null && set.reps != null)
+      .map((set) => Number((set.weight * (1 + (set.reps / 30))).toFixed(1)));
+    topSetE1RM = e1rms.length ? Math.max(...e1rms) : null;
+  } else if (exerciseType === "timed") {
+    const secondsTotal = normalizedSets.reduce((sum, set) => sum + (set.seconds || 0), 0);
+    timedScore = secondsTotal || null;
+  } else {
+    const repsTotal = normalizedSets.reduce((sum, set) => sum + (set.reps || 0), 0);
+    bodyweightScore = repsTotal || null;
+  }
+
+  const performanceScore = topSetE1RM ?? bodyweightScore ?? timedScore ?? null;
+  const muscleGroupContributions = [];
+  if (definition && performanceScore != null) {
+    muscleGroupContributions.push({
+      muscleGroup: definition.primary,
+      value: Number(performanceScore.toFixed ? performanceScore.toFixed(1) : performanceScore),
+      weight: 1,
+      role: "primary",
+    });
+    for (const secondary of definition.secondary || []) {
+      const weightedValue = Number((performanceScore * 0.4).toFixed(1));
+      muscleGroupContributions.push({
+        muscleGroup: secondary,
+        value: weightedValue,
+        weight: 0.4,
+        role: "secondary",
+      });
+    }
+  }
+
+  return {
+    exerciseType,
+    sets: normalizedSets,
+    topSetE1RM,
+    bodyweightScore,
+    timedScore,
+    muscleGroupContributions,
+  };
+}
+
+function migrateStrengthLog(rawLog) {
+  if (!rawLog || !rawLog.date || !rawLog.exercise) {
+    return null;
+  }
+  const base = {
+    id: rawLog.id || createId(),
+    date: rawLog.date,
+    exercise: rawLog.exercise,
+    notes: typeof rawLog.notes === "string" ? rawLog.notes.slice(0, 160) : "",
+    source: rawLog.source || "manual",
+    sourceSessionId: rawLog.sourceSessionId || null,
+    increaseNextTime: Boolean(rawLog.increaseNextTime),
+    sets: Array.isArray(rawLog.sets) ? rawLog.sets : [],
+    exerciseType: rawLog.exerciseType || inferStrengthExerciseType(rawLog.exercise, "weighted"),
+  };
+  return {
+    ...base,
+    ...computeStrengthLogDerivedFields(base),
+  };
+}
+
+function buildStrengthLogsFromSession(session) {
+  if (!session?.date) {
+    return [];
+  }
+  const logs = [];
+  for (const exercise of session.exercises || []) {
+    const populatedSets = (exercise.actualSets || []).filter((set) => set.weight || set.reps);
+    if (!populatedSets.length) {
+      continue;
+    }
+    const baseLog = {
+      id: `${session.id}:${slugifyExerciseName(exercise.name)}`,
+      date: session.date,
+      exercise: exercise.name,
+      exerciseType: inferStrengthExerciseType(exercise.name, "weighted"),
+      sets: populatedSets.map((set) => ({
+        reps: set.reps ?? "",
+        weight: set.weight ?? "",
+        seconds: inferStrengthExerciseType(exercise.name, "weighted") === "timed" ? (parseLoggedNumber(set.reps) ?? "") : "",
+      })),
+      notes: exercise.note || session.note || "",
+      source: "session",
+      sourceSessionId: session.id,
+      increaseNextTime: Boolean(exercise.increaseNextTime),
+    };
+    logs.push(migrateStrengthLog(baseLog));
+  }
+
+  for (const finisher of session.optionalFinishers || []) {
+    for (const exercise of finisher.exercises || []) {
+      const populatedSets = (exercise.actualSets || []).filter((set) => set.weight || set.reps);
+      if (!populatedSets.length) {
+        continue;
+      }
+      const baseLog = {
+        id: `${session.id}:${finisher.id}:${slugifyExerciseName(exercise.name)}`,
+        date: session.date,
+        exercise: exercise.name,
+        exerciseType: inferStrengthExerciseType(exercise.name, "weighted"),
+        sets: populatedSets.map((set) => ({
+          reps: set.reps ?? "",
+          weight: set.weight ?? "",
+          seconds: inferStrengthExerciseType(exercise.name, "weighted") === "timed" ? (parseLoggedNumber(set.reps) ?? "") : "",
+        })),
+        notes: session.note || "",
+        source: "session",
+        sourceSessionId: session.id,
+        increaseNextTime: Boolean(exercise.increaseNextTime),
+      };
+      logs.push(migrateStrengthLog(baseLog));
+    }
+  }
+
+  return logs.filter(Boolean);
 }
 
 function migrateEntry(dateKey, rawEntry, sourceVersion = 4) {
@@ -1865,6 +2072,7 @@ function computeSummary() {
     nextDay: getNextStrengthDay(getSelectedDateKey()),
     progress: getStrengthProgressSummary(),
   };
+  const strengthTrends = computeStrengthTrendSummary(loggedEntries, weekly);
   const region = computeRegionState(loggedEntries, strengthSummary);
   const rewards = state.rewards.map((reward) => ({
     ...reward,
@@ -1892,6 +2100,7 @@ function computeSummary() {
     currentChapter: getCurrentChapter(level),
     bossFight: getBossFight({ loggedEntries, weekly, regularStreak, eliteStreak }),
     strength: strengthSummary,
+    strengthTrends,
     momentum,
     signals: buildSignals(loggedEntries, weekly, strengthSummary),
     scorecard: buildWeeklyScorecard(loggedEntries, weekly, strengthSummary),
@@ -3316,6 +3525,7 @@ function createStrengthSession(dateKey) {
         weight: "",
         repsCompleted: "",
         setsCompleted: 0,
+        increaseNextTime: false,
         actualSets: [],
       })),
     })),
@@ -3383,6 +3593,139 @@ function getStrengthProgressSummary() {
     workoutsThisWeek,
     workoutsThisMonth,
     liftProgress,
+  };
+}
+
+function getStrengthGroupEmptyTotals() {
+  return Object.fromEntries(strengthPrimaryCategories.map((group) => [group, 0]));
+}
+
+function buildStrengthDailyContributionMap(logs) {
+  const byDay = new Map();
+  const byExerciseDay = new Map();
+
+  for (const rawLog of logs) {
+    const log = migrateStrengthLog(rawLog);
+    if (!log || !log.date || !log.exercise) {
+      continue;
+    }
+    const definition = getStrengthExerciseDefinition(log.exercise);
+    if (!definition) {
+      continue;
+    }
+    const score = log.topSetE1RM ?? log.bodyweightScore ?? log.timedScore;
+    if (score == null) {
+      continue;
+    }
+    const key = `${log.date}::${normalizeExerciseKey(log.exercise)}`;
+    const existing = byExerciseDay.get(key);
+    if (!existing || score > existing.score) {
+      byExerciseDay.set(key, { date: log.date, definition, score });
+    }
+  }
+
+  for (const item of byExerciseDay.values()) {
+    const totals = byDay.get(item.date) || getStrengthGroupEmptyTotals();
+    totals[item.definition.primary] = Number((totals[item.definition.primary] + item.score).toFixed(1));
+    for (const secondary of item.definition.secondary || []) {
+      totals[secondary] = Number((totals[secondary] + (item.score * 0.4)).toFixed(1));
+    }
+    byDay.set(item.date, totals);
+  }
+
+  return byDay;
+}
+
+function averageStrengthGroupForWindow(dayMap, startDate, endDate, group) {
+  const values = [];
+  for (const [dateKey, totals] of dayMap.entries()) {
+    if (dateKey < startDate || dateKey > endDate) {
+      continue;
+    }
+    const value = totals[group];
+    if (value != null && value > 0) {
+      values.push(value);
+    }
+  }
+  return values.length ? average(values) : null;
+}
+
+function getStrengthTrendStatus(percentChange, currentAvg, previousAvg) {
+  if (currentAvg == null || previousAvg == null || previousAvg <= 0) {
+    return "Building baseline";
+  }
+  if (percentChange >= strengthTrendThresholds.improving) {
+    return "Improving";
+  }
+  if (percentChange <= strengthTrendThresholds.declining) {
+    return "Declining";
+  }
+  return "Stable";
+}
+
+function computeStrengthTrendSummary(loggedEntries = [], weekly = null) {
+  const todayKey = getTodayKey();
+  const allLogs = (state.strengthLogs || []).filter((log) => log?.date && log.date < todayKey);
+  const dayMap = buildStrengthDailyContributionMap(allLogs);
+  const end = new Date(`${todayKey}T12:00:00`);
+  end.setDate(end.getDate() - 1);
+  const currentStart = new Date(end);
+  currentStart.setDate(currentStart.getDate() - 13);
+  const previousEnd = new Date(currentStart);
+  previousEnd.setDate(previousEnd.getDate() - 1);
+  const previousStart = new Date(previousEnd);
+  previousStart.setDate(previousStart.getDate() - 13);
+  const currentStartKey = currentStart.toISOString().slice(0, 10);
+  const currentEndKey = end.toISOString().slice(0, 10);
+  const previousStartKey = previousStart.toISOString().slice(0, 10);
+  const previousEndKey = previousEnd.toISOString().slice(0, 10);
+
+  const groups = strengthPrimaryCategories.map((group) => {
+    const currentAvg = averageStrengthGroupForWindow(dayMap, currentStartKey, currentEndKey, group);
+    const previousAvg = averageStrengthGroupForWindow(dayMap, previousStartKey, previousEndKey, group);
+    const percentChange = currentAvg != null && previousAvg != null && previousAvg > 0
+      ? Number((((currentAvg - previousAvg) / previousAvg) * 100).toFixed(1))
+      : null;
+    const status = getStrengthTrendStatus(percentChange, currentAvg, previousAvg);
+    return {
+      group,
+      currentAvg,
+      previousAvg,
+      percentChange,
+      status,
+    };
+  });
+
+  const improvingGroups = groups.filter((item) => item.status === "Improving").length;
+  const decliningGroups = groups.filter((item) => item.status === "Declining").length;
+  let insight = "Strength data is still building a baseline.";
+  const weeklyMetrics = weekly || computeWeeklyMetrics(loggedEntries);
+  if (groups.some((item) => item.previousAvg != null)) {
+    if (weeklyMetrics.rolling14DayWeightAvg != null && weeklyMetrics.prior14DayWeightAvg != null) {
+      const weightDown = weeklyMetrics.rolling14DayWeightAvg < weeklyMetrics.prior14DayWeightAvg;
+      if (improvingGroups > 0 && weightDown) {
+        insight = "Strength is improving while weight is trending down. This is an excellent body recomposition signal.";
+      } else if (!decliningGroups && weightDown) {
+        insight = "Strength is stable while weight is dropping. This is still a good sign.";
+      } else if (decliningGroups > 0 && weightDown) {
+        insight = "Strength is declining while weight is dropping. Watch recovery, protein, and whether the calorie deficit is too aggressive.";
+      } else if (improvingGroups > 0) {
+        insight = "Strength is improving. Keep stacking clean work and let the averages do their job.";
+      } else {
+        insight = "Strength is mostly stable. One lower workout will not outweigh the rolling trend.";
+      }
+    } else if (improvingGroups > 0) {
+      insight = "Strength is improving. Keep stacking clean work and let the averages do their job.";
+    } else {
+      insight = "Strength data is still taking shape, but the direction will get clearer as more sessions accumulate.";
+    }
+  }
+
+  return {
+    groups,
+    insight,
+    currentWindowLabel: "Last 14 Days",
+    previousWindowLabel: "Previous 14 Days",
   };
 }
 
@@ -4001,6 +4344,23 @@ function renderStrengthCard(summary) {
   const isComplete = summary.strength.status === "complete";
   const strengthAction = getStrengthPrimaryAction(summary);
   const finisherDefs = getOptionalFinisherDefinitions();
+  const manualExerciseOptions = Array.from(new Set([
+    "Bench Press",
+    "Dumbbell Press",
+    "Shoulder Press",
+    "Row",
+    "Squat",
+    "Lunge",
+    "Deadlift",
+    "Pushup",
+    "Curl",
+    "Triceps Extension",
+    "Plank",
+    "Side Plank",
+    ...strengthExerciseDefinitions.map((item) => item.name),
+    ...workout.exercises.map((item) => item.name),
+    ...finisherDefs.flatMap((finisher) => finisher.exercises.map((item) => item.name)),
+  ]));
   const exercises = (session?.exercises || workout.exercises.map((exercise) => ({
     ...exercise,
     targetSets: exercise.sets,
@@ -4179,6 +4539,51 @@ function renderStrengthCard(summary) {
         <button id="save-strength-session" type="button">Save Workout</button>
       </div>
     </div>
+    <details class="optional-finisher-card">
+      <summary>Log Extra Strength Work</summary>
+      <div class="strength-exercise-meta">For anything outside the base workout.</div>
+      <div class="manual-strength-grid">
+        <label class="quick-field">
+          <span>Date</span>
+          <input id="manual-strength-date" type="date" value="${escapeHtml(dateKey)}">
+        </label>
+        <label class="quick-field">
+          <span>Exercise</span>
+          <select id="manual-strength-exercise">
+            ${manualExerciseOptions.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("")}
+          </select>
+        </label>
+        <label class="quick-field">
+          <span>Type</span>
+          <select id="manual-strength-type">
+            <option value="weighted">Weighted</option>
+            <option value="bodyweight">Bodyweight</option>
+            <option value="timed">Timed</option>
+          </select>
+        </label>
+      </div>
+      <div class="finisher-compact-labels manual-strength-labels">
+        <span>Wt</span>
+        <span>Reps</span>
+        <span>Sec</span>
+      </div>
+      <div class="manual-strength-set-list">
+        ${Array.from({ length: 5 }, (_, index) => `
+          <div class="finisher-compact-row">
+            <input id="manual-strength-weight-${index}" type="text" inputmode="decimal" placeholder="wt">
+            <input id="manual-strength-reps-${index}" type="text" inputmode="decimal" placeholder="reps">
+            <input id="manual-strength-seconds-${index}" type="text" inputmode="decimal" placeholder="sec">
+          </div>
+        `).join("")}
+      </div>
+      <label class="quick-field quick-notes">
+        <span>Notes</span>
+        <input id="manual-strength-notes" type="text" maxlength="160" placeholder="Optional note">
+      </label>
+      <div class="strength-footer-actions">
+        <button id="save-manual-strength-log" type="button" class="secondary-button">Save Extra Log</button>
+      </div>
+    </details>
   `;
 
   const startButton = document.getElementById("start-strength-session");
@@ -4221,6 +4626,7 @@ function renderStrengthCard(summary) {
   if (saveWorkoutButton) {
     saveWorkoutButton.addEventListener("click", saveStrengthSession);
   }
+  document.getElementById("save-manual-strength-log")?.addEventListener("click", saveManualStrengthLog);
 }
 
 function renderSignals(summary) {
@@ -4251,6 +4657,15 @@ function renderScorecard(summary) {
 
 function renderProgress(summary) {
   const momentum = summary.momentum;
+  const strengthTrendRows = summary.strengthTrends.groups.map((item) => {
+    const suffix = item.percentChange == null ? "" : ` ${item.percentChange > 0 ? "+" : ""}${formatMaybe(item.percentChange, 1)}%`;
+    return `
+      <div class="strength-trend-row">
+        <span>${escapeHtml(item.group)}</span>
+        <strong>${escapeHtml(item.status)}${escapeHtml(suffix)}</strong>
+      </div>
+    `;
+  }).join("");
   progressCard.innerHTML = `
     <div class="progress-copy">
       <div class="progress-card-grid">
@@ -4265,6 +4680,11 @@ function renderProgress(summary) {
         <div><strong>Next milestone:</strong> ${escapeHtml(momentum.nextMilestone)}</div>
         <div><strong>Lift progress:</strong> ${escapeHtml(summary.progress.liftSummary)}</div>
         <div><strong>Body trend:</strong> ${escapeHtml(summary.progress.weightSummary)}</div>
+      </div>
+      <div class="strength-trends-card">
+        <div class="today-focus-label">Strength Trends - ${escapeHtml(summary.strengthTrends.currentWindowLabel)}</div>
+        <div class="strength-trends-grid">${strengthTrendRows}</div>
+        <div class="strength-trend-insight">${escapeHtml(summary.strengthTrends.insight)}</div>
       </div>
     </div>
   `;
@@ -4366,6 +4786,54 @@ function handleUnableToTrainToggle(event) {
   render();
 }
 
+function upsertStrengthLogsForSession(session) {
+  const nextLogs = buildStrengthLogsFromSession(session);
+  state.strengthLogs = [
+    ...(state.strengthLogs || []).filter((log) => log.sourceSessionId !== session.id),
+    ...nextLogs,
+  ].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function saveManualStrengthLog() {
+  const date = document.getElementById("manual-strength-date")?.value || getSelectedDateKey();
+  const exercise = document.getElementById("manual-strength-exercise")?.value || "";
+  const exerciseType = document.getElementById("manual-strength-type")?.value || inferStrengthExerciseType(exercise, "weighted");
+  const notes = (document.getElementById("manual-strength-notes")?.value || "").trim().slice(0, 160);
+  const sets = [];
+
+  for (let index = 0; index < 5; index += 1) {
+    const weight = document.getElementById(`manual-strength-weight-${index}`)?.value || "";
+    const reps = document.getElementById(`manual-strength-reps-${index}`)?.value || "";
+    const seconds = document.getElementById(`manual-strength-seconds-${index}`)?.value || "";
+    if (!(weight || reps || seconds)) {
+      continue;
+    }
+    sets.push({ weight, reps, seconds });
+  }
+
+  if (!exercise || !sets.length) {
+    setStatus("Add an exercise and at least one populated set to save an extra strength log.");
+    return;
+  }
+
+  const log = migrateStrengthLog({
+    id: createId(),
+    date,
+    exercise,
+    exerciseType,
+    sets,
+    notes,
+    source: "manual",
+    sourceSessionId: null,
+    increaseNextTime: false,
+  });
+
+  state.strengthLogs = [...(state.strengthLogs || []), log].sort((a, b) => a.date.localeCompare(b.date));
+  saveState();
+  render();
+  setStatus(`Saved extra strength log for ${exercise} on ${formatDisplayDate(date)}.${getSavedBackupSuffix()}`);
+}
+
 function getAutoWorkoutScore(session) {
   if (session.unableToTrain) {
     return 0;
@@ -4461,6 +4929,7 @@ function saveStrengthSession() {
     ...state.strengthHistory.filter((item) => item.date !== session.date),
     session,
   ].sort((a, b) => a.date.localeCompare(b.date));
+  upsertStrengthLogsForSession(session);
   state.meta.currentStrengthSession = null;
   saveState();
   render();
