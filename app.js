@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.13.2";
+const APP_VERSION = "v4.13.3";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -537,6 +537,7 @@ const exportBodyCsvButton = document.getElementById("export-body-csv");
 const exportStrengthCsvButton = document.getElementById("export-strength-csv");
 const exportSummaryCsvButton = document.getElementById("export-summary-csv");
 const importJsonInput = document.getElementById("import-json");
+const trendsRangeSelect = document.getElementById("trends-range");
 
 const entryDateInput = document.getElementById("entry-date");
 const entryStepsInput = document.getElementById("entry-steps");
@@ -581,6 +582,7 @@ const rewardList = document.getElementById("reward-list");
 const storyCard = document.getElementById("story-card");
 const dayList = document.getElementById("day-list");
 const lastExportStatus = document.getElementById("last-export-status");
+const backupHealthStatus = document.getElementById("backup-health-status");
 const appVersion = document.getElementById("app-version");
 const footerVersion = document.getElementById("footer-version");
 const logPanel = document.querySelector(".log-panel");
@@ -640,6 +642,13 @@ function initialize() {
   }
   if (exportSummaryCsvButton) {
     exportSummaryCsvButton.addEventListener("click", () => exportCsv("summary"));
+  }
+  if (trendsRangeSelect) {
+    trendsRangeSelect.addEventListener("change", () => {
+      state.meta.trendsRange = trendsRangeSelect.value || "all";
+      saveState();
+      render();
+    });
   }
   if (importJsonInput) {
     importJsonInput.addEventListener("change", importJson);
@@ -768,6 +777,7 @@ function createEmptyState() {
       lastClaimedSevenDayAvgWeight: null,
       currentStrengthSession: null,
       activeTab: "today",
+      trendsRange: "all",
       storyArchiveMode: "summary",
       currentRegionId: "unsteady-ground",
       unlockedRegionIds: ["unsteady-ground"],
@@ -867,6 +877,7 @@ function migrateState(parsed, sourceKey) {
     lastClaimedSevenDayAvgWeight: parsed.meta?.lastClaimedSevenDayAvgWeight ?? null,
     currentStrengthSession: migrateStrengthSession(parsed.meta?.currentStrengthSession, strengthPlan),
     activeTab: parsed.meta?.activeTab || "today",
+    trendsRange: parsed.meta?.trendsRange || "all",
     storyArchiveMode: parsed.meta?.storyArchiveMode || "summary",
     currentRegionId: parsed.meta?.currentRegionId || "unsteady-ground",
     unlockedRegionIds: Array.isArray(parsed.meta?.unlockedRegionIds) && parsed.meta.unlockedRegionIds.length
@@ -1406,7 +1417,7 @@ function saveDailyEntry() {
     : savedEntry.foodModel === "structure-v1"
     ? ` Food structure ${formatFoodStructureScore(savedEntry.foodStructureScore ?? getFoodStructureScore(savedEntry.foodStructure))}/5 saved.`
     : "";
-  setStatus(`Saved ${formatDisplayDate(dateKey)}.${foodSummary}`);
+  setStatus(`Saved ${formatDisplayDate(dateKey)}.${foodSummary}${getSavedBackupSuffix()}`);
 }
 
 function flashSaveEntryConfirmation() {
@@ -1752,8 +1763,13 @@ function exportJson() {
   URL.revokeObjectURL(url);
   state.meta.lastExportAt = new Date().toISOString();
   saveState();
-  lastExportStatus.textContent = formatRelativeExport(state.meta.lastExportAt);
-  setStatus("Exported your local data as JSON.");
+  if (lastExportStatus) {
+    lastExportStatus.textContent = formatRelativeExport(state.meta.lastExportAt);
+  }
+  if (backupHealthStatus) {
+    backupHealthStatus.textContent = getBackupStatus(state.meta.lastExportAt).label;
+  }
+  setStatus("Backup exported as JSON.");
 }
 
 async function importJson(event) {
@@ -1805,6 +1821,12 @@ function render() {
   renderSection("recent-days", dayList, () => renderRecentDays(summary.timelineLogged));
   if (lastExportStatus) {
     lastExportStatus.textContent = formatRelativeExport(state.meta?.lastExportAt);
+  }
+  if (backupHealthStatus) {
+    backupHealthStatus.textContent = getBackupStatus(state.meta?.lastExportAt).label;
+  }
+  if (trendsRangeSelect) {
+    trendsRangeSelect.value = state.meta?.trendsRange || "all";
   }
   document.body.classList.remove("maintenance-mode");
   if (foodSection) {
@@ -2980,6 +3002,46 @@ function buildRollingAverageSeries(loggedEntries, key, windowSize = 7) {
   return series;
 }
 
+function getTrendRangeStart(range, endDateKey) {
+  if (!range || range === "all") {
+    return null;
+  }
+  const end = new Date(`${endDateKey}T12:00:00`);
+  const start = new Date(end);
+  switch (range) {
+    case "1y":
+      start.setFullYear(start.getFullYear() - 1);
+      break;
+    case "6m":
+      start.setMonth(start.getMonth() - 6);
+      break;
+    case "3m":
+      start.setMonth(start.getMonth() - 3);
+      break;
+    case "1m":
+      start.setMonth(start.getMonth() - 1);
+      break;
+    case "1w":
+      start.setDate(start.getDate() - 7);
+      break;
+    default:
+      return null;
+  }
+  return start.toISOString().slice(0, 10);
+}
+
+function filterTimelineByTrendRange(days, range) {
+  if (!days.length || !range || range === "all") {
+    return days;
+  }
+  const endDateKey = days[days.length - 1].date;
+  const startDateKey = getTrendRangeStart(range, endDateKey);
+  if (!startDateKey) {
+    return days;
+  }
+  return days.filter((day) => day.date >= startDateKey);
+}
+
 function isRewardUnlocked(reward, context) {
   switch (reward.criteriaType) {
     case "level":
@@ -3899,10 +3961,9 @@ function syncQuickCheckbox(sourceId, targetInput) {
 
 function renderWeeklySummary(summary) {
   const statCards = [
-    statCard(`Level ${summary.level}`, `${summary.totalXp.toLocaleString()} XP`, `${state.settings.displayName}'s total campaign experience`),
     statCard("Regular Streak", `${summary.regularStreak} days`, `Best: ${summary.bestRegularStreak}`),
-    statCard("Next Level", `${summary.nextLevelXp.toLocaleString()} XP`, `${summary.xpToNext.toLocaleString()} XP remaining`),
     statCard("7-day Health Score", formatMaybe(summary.weekly.latestHealth7, 0), `${summary.weekly.loggedDays} days logged this week`),
+    statCard("Strength This Week", summary.momentum.workoutProgress, "Planned workouts completed this week"),
     statCard("14-day Weight Avg", `${getTrendArrow(summary.weekly.rolling14DayWeightAvg, summary.weekly.prior14DayWeightAvg)} ${formatMaybe(summary.weekly.rolling14DayWeightAvg, 1)}`, `Best 7-day: ${formatMaybe(summary.weekly.bestSevenDayWeightAverage, 1)} | Gap: ${formatSigned(summary.weekly.gapFromBestWeightAverage, 1)}`),
     statCard("14-day Body Fat Avg", `${getTrendArrow(summary.weekly.rolling14DayBodyFatAvg, summary.weekly.prior14DayBodyFatAvg)} ${formatMaybe(summary.weekly.rolling14DayBodyFatAvg, 1, "%")}`, `Goal: ${state.settings.bodyFatGoal}%`),
     statCard("7-day Active Calories", formatMaybe(summary.weekly.avgActiveCalories, 0), "Move calories, averaged across recent logged days"),
@@ -4403,7 +4464,7 @@ function saveStrengthSession() {
   state.meta.currentStrengthSession = null;
   saveState();
   render();
-  setStatus(`Saved ${session.unableToTrain ? "unable-to-train status" : session.awayWorkoutCompleted ? "away workout" : "strength session"} for ${formatDisplayDate(session.date)}.`);
+  setStatus(`Saved ${session.unableToTrain ? "unable-to-train status" : session.awayWorkoutCompleted ? "away workout" : "strength session"} for ${formatDisplayDate(session.date)}.${getSavedBackupSuffix()}`);
 }
 
 function buildSignals(loggedEntries, weekly, strengthSummary) {
@@ -4689,7 +4750,11 @@ function exportCsv(type) {
 }
 
 function renderCharts(summary) {
-  const scoreDays = summary.timelineLogged.filter((day) => day.date < getTodayKey());
+  const range = state.meta?.trendsRange || "all";
+  const scoreDays = filterTimelineByTrendRange(
+    summary.timelineLogged.filter((day) => day.date < getTodayKey()),
+    range
+  );
   const weightDays = scoreDays.map((day) => ({ ...day, weight: day.weight ?? null }));
   const bodyFatDays = scoreDays.map((day) => ({ ...day, bodyFat: day.bodyFat ?? null }));
 
@@ -4706,23 +4771,30 @@ function renderLineChart(title, data, key, goal, movingAverageSeries = []) {
     return `<div class="empty-state">${escapeHtml(title)} graph appears after you log a few days.</div>`;
   }
 
-  const width = 320;
-  const height = 160;
-  const padding = 18;
+  const width = 340;
+  const height = 188;
+  const padding = 22;
+  const chartBottom = height - 34;
   const values = validData.map((item) => item[key]).concat(movingAverageSeries.map((item) => item.value));
   const min = Math.min(...values, goal);
   const max = Math.max(...values, goal);
   const range = Math.max(1, max - min);
+  const startDateMs = new Date(`${data[0].date}T12:00:00`).getTime();
+  const endDateMs = new Date(`${data[data.length - 1].date}T12:00:00`).getTime();
+  const dateSpan = Math.max(86400000, endDateMs - startDateMs);
 
-  const dateIndexMap = new Map(data.map((item, index) => [item.date, index]));
-  const getPoint = (item, index) => {
-    const x = padding + (index * (width - padding * 2)) / Math.max(1, data.length - 1);
-    const y = height - padding - ((item[key] - min) / range) * (height - padding * 2);
+  const getXForDate = (dateKey) => {
+    const dateMs = new Date(`${dateKey}T12:00:00`).getTime();
+    return padding + (((dateMs - startDateMs) / dateSpan) * (width - padding * 2));
+  };
+  const getPoint = (item) => {
+    const x = getXForDate(item.date);
+    const y = chartBottom - ((item[key] - min) / range) * (chartBottom - padding);
     return `${x},${y}`;
   };
   const pointSegments = [];
   let activeSegment = [];
-  data.forEach((item, index) => {
+  data.forEach((item) => {
     if (item[key] == null) {
       if (activeSegment.length) {
         pointSegments.push(activeSegment.join(" "));
@@ -4730,25 +4802,45 @@ function renderLineChart(title, data, key, goal, movingAverageSeries = []) {
       }
       return;
     }
-    activeSegment.push(getPoint(item, index));
+    activeSegment.push(getPoint(item));
   });
   if (activeSegment.length) {
     pointSegments.push(activeSegment.join(" "));
   }
   const movingAveragePoints = movingAverageSeries.map((item) => {
-    const index = dateIndexMap.get(item.date);
-    const x = padding + (index * (width - padding * 2)) / Math.max(1, data.length - 1);
-    const y = height - padding - ((item.value - min) / range) * (height - padding * 2);
+    const x = getXForDate(item.date);
+    const y = chartBottom - ((item.value - min) / range) * (chartBottom - padding);
     return `${x},${y}`;
   }).join(" ");
 
-  const goalY = height - padding - ((goal - min) / range) * (height - padding * 2);
+  const goalY = chartBottom - ((goal - min) / range) * (chartBottom - padding);
   const latest = validData[validData.length - 1]?.[key] ?? null;
   const sevenAgo = validData.length > 7 ? validData[validData.length - 8]?.[key] ?? null : null;
   const change = latest != null && sevenAgo != null ? latest - sevenAgo : null;
   const currentAverage = movingAverageSeries.length ? movingAverageSeries[movingAverageSeries.length - 1].value : null;
   const seriesStats = buildSeriesSummary(validData, key);
   const decimals = key === "totalScore" ? 0 : 1;
+  const tickIndexes = Array.from(new Set([
+    0,
+    Math.max(0, Math.round((data.length - 1) * 0.25)),
+    Math.max(0, Math.round((data.length - 1) * 0.5)),
+    Math.max(0, Math.round((data.length - 1) * 0.75)),
+    data.length - 1,
+  ])).filter((index) => index >= 0 && index < data.length);
+  const xTicks = tickIndexes.map((index) => {
+    const day = data[index];
+    const date = new Date(`${day.date}T12:00:00`);
+    const totalDays = Math.max(1, Math.round(dateSpan / 86400000));
+    const label = totalDays > 200
+      ? date.toLocaleDateString(undefined, { month: "short", year: "2-digit" })
+      : totalDays > 45
+        ? date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+        : date.toLocaleDateString(undefined, { month: "numeric", day: "numeric" });
+    return {
+      x: getXForDate(day.date),
+      label,
+    };
+  });
 
   return `
     <div class="chart-card">
@@ -4764,16 +4856,23 @@ function renderLineChart(title, data, key, goal, movingAverageSeries = []) {
       </div>
       <svg viewBox="0 0 ${width} ${height}" class="trend-chart" role="img" aria-label="${escapeHtml(title)} trend">
         <line x1="${padding}" y1="${goalY}" x2="${width - padding}" y2="${goalY}" class="goal-line"></line>
+        <line x1="${padding}" y1="${chartBottom}" x2="${width - padding}" y2="${chartBottom}" class="axis-line"></line>
         ${pointSegments.map((points) => `<polyline points="${points}" class="trend-line"></polyline>`).join("")}
         ${movingAveragePoints ? `<polyline points="${movingAveragePoints}" class="trend-line trend-line-average"></polyline>` : ""}
-        ${data.map((item, index) => {
+        ${data.map((item) => {
           if (item[key] == null) {
             return "";
           }
-          const x = padding + (index * (width - padding * 2)) / Math.max(1, data.length - 1);
-          const y = height - padding - ((item[key] - min) / range) * (height - padding * 2);
+          const x = getXForDate(item.date);
+          const y = chartBottom - ((item[key] - min) / range) * (chartBottom - padding);
           return `<circle cx="${x}" cy="${y}" r="4" class="trend-point"></circle>`;
         }).join("")}
+        ${xTicks.map((tick) => `
+          <g class="chart-x-tick">
+            <line x1="${tick.x}" y1="${chartBottom}" x2="${tick.x}" y2="${chartBottom + 5}" class="axis-line"></line>
+            <text x="${tick.x}" y="${height - 10}" text-anchor="middle">${escapeHtml(tick.label)}</text>
+          </g>
+        `).join("")}
       </svg>
       <div class="chart-meta">Reference line: ${goal}</div>
     </div>
@@ -5168,6 +5267,30 @@ function formatRelativeExport(timestamp) {
     return "1 day ago";
   }
   return `${diffDays} days ago`;
+}
+
+function getBackupStatus(timestamp) {
+  if (!timestamp) {
+    return { label: "Overdue", stale: true };
+  }
+  const then = new Date(timestamp);
+  if (Number.isNaN(then.getTime())) {
+    return { label: "Overdue", stale: true };
+  }
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - then.getTime()) / 86400000);
+  if (diffDays <= 6) {
+    return { label: "Fresh", stale: false };
+  }
+  if (diffDays <= 13) {
+    return { label: "Backup soon", stale: false };
+  }
+  return { label: "Overdue", stale: true };
+}
+
+function getSavedBackupSuffix() {
+  const backup = getBackupStatus(state.meta?.lastExportAt);
+  return backup.stale ? " Backup recommended." : "";
 }
 
 function capitalize(value) {

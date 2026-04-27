@@ -1746,10 +1746,37 @@ button,
   overflow-wrap: anywhere;
 }
 
+.trend-range-control {
+  display: grid;
+  gap: 4px;
+  min-width: 108px;
+}
+
+.trend-range-control span {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.trend-range-control select {
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 0.88rem;
+}
+
 .goal-line {
   stroke: rgba(188, 71, 73, 0.8);
   stroke-width: 2;
   stroke-dasharray: 6 5;
+}
+
+.axis-line {
+  stroke: rgba(13, 59, 102, 0.2);
+  stroke-width: 1.5;
 }
 
 .trend-line {
@@ -1768,6 +1795,12 @@ button,
 
 .trend-point {
   fill: var(--brand-2);
+}
+
+.chart-x-tick text {
+  fill: var(--muted);
+  font-size: 9px;
+  font-weight: 600;
 }
 
 .guardrail-list {

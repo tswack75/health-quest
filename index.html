@@ -7,8 +7,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Health Quest</title>
-  <link rel="manifest" href="manifest.json?v=4.13.2">
-  <link rel="stylesheet" href="styles.css?v=4.13.2">
+  <link rel="manifest" href="manifest.json?v=4.13.3">
+  <link rel="stylesheet" href="styles.css?v=4.13.3">
 </head>
 <body>
   <div class="app-shell">
@@ -80,7 +80,7 @@
         <details class="compact-details">
           <summary>Data Tools</summary>
           <div class="data-actions">
-            <button id="export-json" type="button" class="secondary-button">Export JSON</button>
+            <button id="export-json" type="button" class="secondary-button">Backup Now (JSON)</button>
             <button id="export-food-csv" type="button" class="secondary-button">Food CSV</button>
             <button id="export-body-csv" type="button" class="secondary-button">Body CSV</button>
             <button id="export-strength-csv" type="button" class="secondary-button">Strength CSV</button>
@@ -92,10 +92,11 @@
           </div>
           <div class="meta-list">
             <div class="meta-item"><span>Last export</span><strong id="last-export-status">Never</strong></div>
+            <div class="meta-item"><span>Backup status</span><strong id="backup-health-status">Overdue</strong></div>
             <div class="meta-item"><span>App version</span><strong id="app-version">--</strong></div>
           </div>
         </details>
-        <p id="status-message" class="status-message">Local-first storage is on. Export occasionally for safety.</p>
+        <p id="status-message" class="status-message">Local-only. Back up weekly.</p>
       </section>
 
       <section class="panel log-panel" data-view="today">
@@ -166,6 +167,17 @@
       <section class="panel summary-panel" data-view="trends">
         <div class="panel-header">
           <h2>Signals & Trends</h2>
+          <label class="trend-range-control">
+            <span>Range</span>
+            <select id="trends-range">
+              <option value="all">All-time</option>
+              <option value="1y">1 year</option>
+              <option value="6m">6 months</option>
+              <option value="3m">3 months</option>
+              <option value="1m">1 month</option>
+              <option value="1w">1 week</option>
+            </select>
+          </label>
         </div>
         <div id="chart-wrap" class="chart-wrap"></div>
         <div id="summary-stats" class="stats-grid"></div>
@@ -241,7 +253,7 @@
     </footer>
   </div>
 
-  <script src="exercise-help.js?v=4.13.2"></script>
-  <script src="app.js?v=4.13.2"></script>
+  <script src="exercise-help.js?v=4.13.3"></script>
+  <script src="app.js?v=4.13.3"></script>
 </body>
 </html>
