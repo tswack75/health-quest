@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.13.1";
+const APP_VERSION = "v4.13.2";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -1079,6 +1079,7 @@ function migrateStrengthSession(session, strengthPlan = defaultStrengthPlan) {
             weight: derivedWeight,
             repsCompleted: derivedReps,
             setsCompleted: clampNumber(derivedSetsCompleted, 0, exercise.sets, 0),
+            increaseNextTime: Boolean(previousExercise.increaseNextTime),
             actualSets: priorActualSets.length
               ? priorActualSets.map((set, index) => ({
                   set: index + 1,
@@ -3098,6 +3099,25 @@ function getLastExercisePerformance(name) {
   return null;
 }
 
+function getLastFinisherPerformance(finisherId, name) {
+  for (let index = state.strengthHistory.length - 1; index >= 0; index -= 1) {
+    const session = state.strengthHistory[index];
+    const finisher = session.optionalFinishers?.find((item) => item.id === finisherId);
+    const exercise = finisher?.exercises?.find((item) =>
+      item.name === name && (
+        item.weight ||
+        item.repsCompleted ||
+        Number(item.setsCompleted || 0) > 0 ||
+        item.actualSets?.some((set) => set.weight || set.reps)
+      )
+    );
+    if (exercise) {
+      return { session, finisher, exercise };
+    }
+  }
+  return null;
+}
+
 function getLastIncreaseMarker(name) {
   for (let index = state.strengthHistory.length - 1; index >= 0; index -= 1) {
     const session = state.strengthHistory[index];
@@ -3105,6 +3125,25 @@ function getLastIncreaseMarker(name) {
     if (exercise) {
       return { session, exercise };
     }
+  }
+  return null;
+}
+
+function getPendingFinisherIncreaseReminder(finisherId, name, currentDateKey = getSelectedDateKey()) {
+  for (let index = state.strengthHistory.length - 1; index >= 0; index -= 1) {
+    const session = state.strengthHistory[index];
+    const finisher = session.optionalFinishers?.find((item) => item.id === finisherId);
+    const exercise = finisher?.exercises?.find((item) => item.name === name);
+    if (!exercise) {
+      continue;
+    }
+    if (!exercise.increaseNextTime) {
+      return null;
+    }
+    if (session.date >= currentDateKey) {
+      return null;
+    }
+    return { session, finisher, exercise };
   }
   return null;
 }
@@ -4007,9 +4046,20 @@ function renderStrengthCard(summary) {
                 </span>
               </label>
               <div class="finisher-exercise-list">
-                ${(sessionFinisher?.exercises || []).map((exercise, exerciseIndex) => `
+                ${(sessionFinisher?.exercises || []).map((exercise, exerciseIndex) => {
+                  const lastFinisher = getLastFinisherPerformance(finisher.id, exercise.name);
+                  const pendingIncrease = getPendingFinisherIncreaseReminder(finisher.id, exercise.name, dateKey);
+                  const lastWeight = lastFinisher?.exercise?.weight || lastFinisher?.exercise?.actualSets?.find((set) => set.weight)?.weight || "";
+                  const lastSets = lastFinisher?.exercise?.setsCompleted || lastFinisher?.exercise?.actualSets?.filter((set) => set.completed || set.weight || set.reps).length || "";
+                  const lastReps = lastFinisher?.exercise?.repsCompleted || lastFinisher?.exercise?.actualSets?.find((set) => set.reps)?.reps || "";
+                  const lastSummary = [lastWeight ? `${lastWeight}` : "", lastSets ? `${lastSets} sets` : "", lastReps ? `${lastReps} reps` : ""].filter(Boolean).join(" / ");
+                  return `
                   <div class="finisher-exercise">
-                    <div class="strength-exercise-meta"><strong>${escapeHtml(exercise.name)}</strong></div>
+                    <div class="finisher-exercise-top">
+                      <div class="strength-exercise-meta"><strong>${escapeHtml(exercise.name)}</strong></div>
+                      ${pendingIncrease ? `<span class="strength-flag-badge compact">Marked</span>` : ""}
+                    </div>
+                    ${lastSummary ? `<div class="finisher-last-row">Last: ${escapeHtml(lastSummary)}</div>` : ""}
                     <div class="finisher-compact-labels">
                       <span>Wt</span>
                       <span>Sets</span>
@@ -4021,8 +4071,13 @@ function renderStrengthCard(summary) {
                       <input data-finisher-exercise="${finisher.id}::${exerciseIndex}" data-finisher-field="repsCompleted" type="text" inputmode="decimal" placeholder="reps" value="${escapeHtml(String(exercise.repsCompleted ?? ""))}">
                     </div>
                     <div class="strength-exercise-meta">Target ${escapeHtml(String(exercise.sets))} x ${escapeHtml(String(exercise.reps))}</div>
+                    <label class="checkbox-row compact finisher-increase-toggle">
+                      <input type="checkbox" data-finisher-exercise-flag="${finisher.id}::${exerciseIndex}" ${exercise.increaseNextTime ? "checked" : ""}>
+                      Increase next time
+                    </label>
                   </div>
-                `).join("")}
+                `;
+                }).join("")}
               </div>
             </div>
           `;
@@ -4095,6 +4150,9 @@ function renderStrengthCard(summary) {
   }
   for (const input of strengthCard.querySelectorAll("[data-finisher-field]")) {
     input.addEventListener("input", handleFinisherDraftChange);
+  }
+  for (const input of strengthCard.querySelectorAll("[data-finisher-exercise-flag]")) {
+    input.addEventListener("change", handleFinisherIncreaseToggle);
   }
   document.getElementById("away-workout-completed")?.addEventListener("change", handleAwayWorkoutToggle);
   document.getElementById("strength-unable-to-train")?.addEventListener("change", handleUnableToTrainToggle);
@@ -4212,6 +4270,20 @@ function handleFinisherDraftChange(event) {
   state.meta.currentStrengthSession = session;
 }
 
+function handleFinisherIncreaseToggle(event) {
+  const session = getEditableStrengthSession();
+  const [finisherId, exerciseIndexRaw] = String(event.target.dataset.finisherExerciseFlag || "").split("::");
+  const exerciseIndex = Number(exerciseIndexRaw);
+  const finisher = (session.optionalFinishers || []).find((item) => item.id === finisherId);
+  const exercise = finisher?.exercises?.[exerciseIndex];
+  if (!exercise) {
+    return;
+  }
+  exercise.increaseNextTime = event.target.checked;
+  state.meta.currentStrengthSession = session;
+  render();
+}
+
 function handleAwayWorkoutToggle(event) {
   const session = getEditableStrengthSession();
   session.awayWorkoutCompleted = event.target.checked;
@@ -4296,6 +4368,7 @@ function saveStrengthSession() {
         weight,
         repsCompleted,
         setsCompleted,
+        increaseNextTime: Boolean(exercise.increaseNextTime),
         actualSets: Array.from({ length: setsCompleted }, (_, index) => ({
           set: index + 1,
           weight,
@@ -4616,36 +4689,52 @@ function exportCsv(type) {
 }
 
 function renderCharts(summary) {
-  const weightDays = summary.timelineLogged.filter((day) => day.weight != null);
-  const bodyFatDays = summary.timelineLogged.filter((day) => day.bodyFat != null);
   const scoreDays = summary.timelineLogged.filter((day) => day.date < getTodayKey());
+  const weightDays = scoreDays.map((day) => ({ ...day, weight: day.weight ?? null }));
+  const bodyFatDays = scoreDays.map((day) => ({ ...day, bodyFat: day.bodyFat ?? null }));
 
   chartWrap.innerHTML = `
-    ${renderLineChart("Weight", weightDays, "weight", state.settings.weightGoal, buildRollingAverageSeries(weightDays, "weight"))}
-    ${renderLineChart("Body Fat %", bodyFatDays, "bodyFat", state.settings.bodyFatGoal, buildRollingAverageSeries(bodyFatDays, "bodyFat"))}
+    ${renderLineChart("Weight", weightDays, "weight", state.settings.weightGoal, buildRollingAverageSeries(weightDays.filter((day) => day.weight != null), "weight"))}
+    ${renderLineChart("Body Fat %", bodyFatDays, "bodyFat", state.settings.bodyFatGoal, buildRollingAverageSeries(bodyFatDays.filter((day) => day.bodyFat != null), "bodyFat"))}
     ${renderLineChart("Daily Score", scoreDays, "totalScore", dayThresholds.win, buildRollingAverageSeries(scoreDays, "totalScore"))}
   `;
 }
 
 function renderLineChart(title, data, key, goal, movingAverageSeries = []) {
-  if (!data.length) {
+  const validData = data.filter((item) => item[key] != null);
+  if (!validData.length) {
     return `<div class="empty-state">${escapeHtml(title)} graph appears after you log a few days.</div>`;
   }
 
   const width = 320;
   const height = 160;
   const padding = 18;
-  const values = data.map((item) => item[key]).concat(movingAverageSeries.map((item) => item.value));
+  const values = validData.map((item) => item[key]).concat(movingAverageSeries.map((item) => item.value));
   const min = Math.min(...values, goal);
   const max = Math.max(...values, goal);
   const range = Math.max(1, max - min);
 
   const dateIndexMap = new Map(data.map((item, index) => [item.date, index]));
-  const points = data.map((item, index) => {
+  const getPoint = (item, index) => {
     const x = padding + (index * (width - padding * 2)) / Math.max(1, data.length - 1);
     const y = height - padding - ((item[key] - min) / range) * (height - padding * 2);
     return `${x},${y}`;
-  }).join(" ");
+  };
+  const pointSegments = [];
+  let activeSegment = [];
+  data.forEach((item, index) => {
+    if (item[key] == null) {
+      if (activeSegment.length) {
+        pointSegments.push(activeSegment.join(" "));
+        activeSegment = [];
+      }
+      return;
+    }
+    activeSegment.push(getPoint(item, index));
+  });
+  if (activeSegment.length) {
+    pointSegments.push(activeSegment.join(" "));
+  }
   const movingAveragePoints = movingAverageSeries.map((item) => {
     const index = dateIndexMap.get(item.date);
     const x = padding + (index * (width - padding * 2)) / Math.max(1, data.length - 1);
@@ -4654,11 +4743,11 @@ function renderLineChart(title, data, key, goal, movingAverageSeries = []) {
   }).join(" ");
 
   const goalY = height - padding - ((goal - min) / range) * (height - padding * 2);
-  const latest = data[data.length - 1]?.[key] ?? null;
-  const sevenAgo = data.length > 7 ? data[data.length - 8]?.[key] ?? null : null;
+  const latest = validData[validData.length - 1]?.[key] ?? null;
+  const sevenAgo = validData.length > 7 ? validData[validData.length - 8]?.[key] ?? null : null;
   const change = latest != null && sevenAgo != null ? latest - sevenAgo : null;
   const currentAverage = movingAverageSeries.length ? movingAverageSeries[movingAverageSeries.length - 1].value : null;
-  const seriesStats = buildSeriesSummary(data, key);
+  const seriesStats = buildSeriesSummary(validData, key);
   const decimals = key === "totalScore" ? 0 : 1;
 
   return `
@@ -4675,9 +4764,12 @@ function renderLineChart(title, data, key, goal, movingAverageSeries = []) {
       </div>
       <svg viewBox="0 0 ${width} ${height}" class="trend-chart" role="img" aria-label="${escapeHtml(title)} trend">
         <line x1="${padding}" y1="${goalY}" x2="${width - padding}" y2="${goalY}" class="goal-line"></line>
-        <polyline points="${points}" class="trend-line"></polyline>
+        ${pointSegments.map((points) => `<polyline points="${points}" class="trend-line"></polyline>`).join("")}
         ${movingAveragePoints ? `<polyline points="${movingAveragePoints}" class="trend-line trend-line-average"></polyline>` : ""}
         ${data.map((item, index) => {
+          if (item[key] == null) {
+            return "";
+          }
           const x = padding + (index * (width - padding * 2)) / Math.max(1, data.length - 1);
           const y = height - padding - ((item[key] - min) / range) * (height - padding * 2);
           return `<circle cx="${x}" cy="${y}" r="4" class="trend-point"></circle>`;
@@ -4808,7 +4900,8 @@ function getBossFight(context) {
 }
 
 function getSeriesStats(data, key) {
-  if (!data.length) {
+  const validData = data.filter((item) => item[key] != null);
+  if (!validData.length) {
     return {
       max: null,
       min: null,
@@ -4818,13 +4911,13 @@ function getSeriesStats(data, key) {
     };
   }
 
-  const values = data.map((item) => item[key]);
+  const values = validData.map((item) => item[key]);
   const first = values[0];
   const last = values[values.length - 1];
-  const latestDate = new Date(`${data[data.length - 1].date}T12:00:00`);
+  const latestDate = new Date(`${validData[validData.length - 1].date}T12:00:00`);
   const cutoff = new Date(latestDate);
   cutoff.setDate(cutoff.getDate() - 30);
-  const recentWindow = data.filter((item) => new Date(`${item.date}T12:00:00`) >= cutoff);
+  const recentWindow = validData.filter((item) => new Date(`${item.date}T12:00:00`) >= cutoff);
   const recentStart = recentWindow.length ? recentWindow[0][key] : first;
 
   return {

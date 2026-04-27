@@ -1558,6 +1558,19 @@ button,
   padding-top: 4px;
 }
 
+.finisher-exercise-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.finisher-last-row {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
 .finisher-compact-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1587,6 +1600,10 @@ button,
 .finisher-item.completed {
   border-color: rgba(42, 157, 143, 0.35);
   background: rgba(42, 157, 143, 0.08);
+}
+
+.finisher-increase-toggle {
+  font-size: 0.84rem;
 }
 
 .strength-status-card {
