@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.14.0";
+const APP_VERSION = "v4.14.1";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -5231,6 +5231,7 @@ function renderCharts(summary) {
     ${renderLineChart("Weight", weightDays, "weight", state.settings.weightGoal, buildRollingAverageSeries(weightDays.filter((day) => day.weight != null), "weight"))}
     ${renderLineChart("Body Fat %", bodyFatDays, "bodyFat", state.settings.bodyFatGoal, buildRollingAverageSeries(bodyFatDays.filter((day) => day.bodyFat != null), "bodyFat"))}
     ${renderLineChart("Daily Score", scoreDays, "totalScore", dayThresholds.win, buildRollingAverageSeries(scoreDays, "totalScore"))}
+    ${renderStrengthTrendChart(summary, range)}
   `;
 }
 
@@ -5345,6 +5346,113 @@ function renderLineChart(title, data, key, goal, movingAverageSeries = []) {
       </svg>
       <div class="chart-meta">Reference line: ${goal}</div>
     </div>
+  `;
+}
+
+function renderStrengthTrendChart(summary, range = "all") {
+  const timeline = filterTimelineByTrendRange(
+    summary.timelineFilled.filter((day) => day.date < getTodayKey()),
+    range
+  );
+  const contributionMap = buildStrengthDailyContributionMap(state.strengthLogs || []);
+  const series = strengthPrimaryCategories.map((group) => ({
+    group,
+    color: ({
+      Chest: "#d97706",
+      Shoulders: "#1d4ed8",
+      Arms: "#7c3aed",
+      Legs: "#15803d",
+      Core: "#0f766e",
+      Back: "#b45309",
+    })[group] || "#0d3b66",
+    data: timeline.map((day) => ({
+      date: day.date,
+      value: contributionMap.get(day.date)?.[group] ?? null,
+    })),
+  }));
+  const validSeries = series.filter((item) => item.data.some((point) => point.value != null));
+  if (!validSeries.length) {
+    return `
+      <details class="compact-details strength-trend-details">
+        <summary>Strength Trend Lines</summary>
+        <div class="empty-state">Strength trend lines appear after you log a few weighted, bodyweight, or timed strength sessions.</div>
+      </details>
+    `;
+  }
+
+  const width = 340;
+  const height = 188;
+  const padding = 22;
+  const chartBottom = height - 34;
+  const allValues = validSeries.flatMap((item) => item.data.map((point) => point.value).filter((value) => value != null));
+  const min = Math.min(...allValues);
+  const max = Math.max(...allValues);
+  const rangeValue = Math.max(1, max - min);
+  const startDateMs = new Date(`${timeline[0].date}T12:00:00`).getTime();
+  const endDateMs = new Date(`${timeline[timeline.length - 1].date}T12:00:00`).getTime();
+  const dateSpan = Math.max(86400000, endDateMs - startDateMs);
+  const getXForDate = (dateKey) => {
+    const dateMs = new Date(`${dateKey}T12:00:00`).getTime();
+    return padding + (((dateMs - startDateMs) / dateSpan) * (width - padding * 2));
+  };
+  const tickIndexes = Array.from(new Set([
+    0,
+    Math.max(0, Math.round((timeline.length - 1) * 0.25)),
+    Math.max(0, Math.round((timeline.length - 1) * 0.5)),
+    Math.max(0, Math.round((timeline.length - 1) * 0.75)),
+    timeline.length - 1,
+  ])).filter((index) => index >= 0 && index < timeline.length);
+  const xTicks = tickIndexes.map((index) => {
+    const day = timeline[index];
+    const date = new Date(`${day.date}T12:00:00`);
+    const totalDays = Math.max(1, Math.round(dateSpan / 86400000));
+    const label = totalDays > 200
+      ? date.toLocaleDateString(undefined, { month: "short", year: "2-digit" })
+      : totalDays > 45
+        ? date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+        : date.toLocaleDateString(undefined, { month: "numeric", day: "numeric" });
+    return { x: getXForDate(day.date), label };
+  });
+
+  const polylines = validSeries.map((item) => {
+    const segments = [];
+    let active = [];
+    item.data.forEach((point) => {
+      if (point.value == null) {
+        if (active.length) {
+          segments.push(active.join(" "));
+          active = [];
+        }
+        return;
+      }
+      const x = getXForDate(point.date);
+      const y = chartBottom - ((point.value - min) / rangeValue) * (chartBottom - padding);
+      active.push(`${x},${y}`);
+    });
+    if (active.length) {
+      segments.push(active.join(" "));
+    }
+    return { ...item, segments };
+  });
+
+  return `
+    <details class="compact-details strength-trend-details">
+      <summary>Strength Trend Lines</summary>
+      <div class="strength-trend-legend">
+        ${validSeries.map((item) => `<span class="strength-legend-chip"><span class="strength-legend-swatch" style="background:${item.color}"></span>${escapeHtml(item.group)}</span>`).join("")}
+      </div>
+      <svg viewBox="0 0 ${width} ${height}" class="trend-chart" role="img" aria-label="Strength trend lines by muscle group">
+        <line x1="${padding}" y1="${chartBottom}" x2="${width - padding}" y2="${chartBottom}" class="axis-line"></line>
+        ${polylines.map((item) => item.segments.map((points) => `<polyline points="${points}" class="trend-line strength-trend-line" style="stroke:${item.color}"></polyline>`).join("")).join("")}
+        ${xTicks.map((tick) => `
+          <g class="chart-x-tick">
+            <line x1="${tick.x}" y1="${chartBottom}" x2="${tick.x}" y2="${chartBottom + 5}" class="axis-line"></line>
+            <text x="${tick.x}" y="${height - 10}" text-anchor="middle">${escapeHtml(tick.label)}</text>
+          </g>
+        `).join("")}
+      </svg>
+      <div class="chart-meta">Directional muscle-group strength trend across logged sessions.</div>
+    </details>
   `;
 }
 

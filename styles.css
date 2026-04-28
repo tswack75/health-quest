@@ -1848,6 +1848,39 @@ button,
   font-weight: 600;
 }
 
+.strength-trend-details {
+  margin-top: 12px;
+}
+
+.strength-trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+
+.strength-legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(13, 59, 102, 0.06);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.strength-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.strength-trend-line {
+  stroke-width: 2.5;
+}
+
 .guardrail-list {
   display: grid;
   gap: 8px;
