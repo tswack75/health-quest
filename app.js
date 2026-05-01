@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.15.0";
+const APP_VERSION = "v4.15.1";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -5881,24 +5881,14 @@ function renderStrengthTrendChart(summary, range = "all") {
   });
 
   const polylines = validSeries.map((item) => {
-    const segments = [];
-    let active = [];
-    item.data.forEach((point) => {
-      if (point.value == null) {
-        if (active.length) {
-          segments.push(active.join(" "));
-          active = [];
-        }
-        return;
-      }
-      const x = getXForDate(point.date);
-      const y = chartBottom - ((point.value - min) / rangeValue) * (chartBottom - padding);
-      active.push(`${x},${y}`);
-    });
-    if (active.length) {
-      segments.push(active.join(" "));
-    }
-    return { ...item, segments };
+    const points = item.data
+      .filter((point) => point.value != null)
+      .map((point) => {
+        const x = getXForDate(point.date);
+        const y = chartBottom - ((point.value - min) / rangeValue) * (chartBottom - padding);
+        return `${x},${y}`;
+      });
+    return { ...item, points };
   });
   const pointMarkup = validSeries.map((item) => item.data.map((point) => {
     if (point.value == null) {
@@ -5917,7 +5907,7 @@ function renderStrengthTrendChart(summary, range = "all") {
       </div>
       <svg viewBox="0 0 ${width} ${height}" class="trend-chart" role="img" aria-label="Strength trend lines by muscle group">
         <line x1="${padding}" y1="${chartBottom}" x2="${width - padding}" y2="${chartBottom}" class="axis-line"></line>
-        ${polylines.map((item) => item.segments.map((points) => `<polyline points="${points}" class="trend-line strength-trend-line" style="stroke:${item.color}"></polyline>`).join("")).join("")}
+        ${polylines.map((item) => item.points.length >= 2 ? `<polyline points="${item.points.join(" ")}" class="trend-line strength-trend-line" style="stroke:${item.color}"></polyline>` : "").join("")}
         ${pointMarkup}
         ${xTicks.map((tick) => `
           <g class="chart-x-tick">
