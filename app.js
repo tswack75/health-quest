@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.14.1";
+const APP_VERSION = "v4.15.0";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -71,6 +71,38 @@ const strengthTrendThresholds = {
   improving: 3,
   declining: -3,
 };
+const awayWorkoutIntensityMultipliers = {
+  easy: 0.85,
+  moderate: 1,
+  hard: 1.15,
+};
+const bandResistanceMultipliers = {
+  light: 1,
+  medium: 1.25,
+  heavy: 1.5,
+};
+const weightedStrengthSourceTypes = new Set(["gym_weighted"]);
+const awayStrengthSourceTypes = new Set(["away_bodyweight", "away_timed", "away_band"]);
+const supportStrengthSourceTypes = new Set(["gym_bodyweight", "gym_timed", "away_bodyweight", "away_timed", "away_band"]);
+const awayWorkoutExerciseLibrary = [
+  { name: "Incline Pushups", type: "bodyweight", sets: 3, targetReps: "8-15" },
+  { name: "Bodyweight Squats", type: "bodyweight", sets: 3, targetReps: "10-20" },
+  { name: "Lunges", type: "bodyweight", sets: 3, targetReps: "8-12 / side" },
+  { name: "Plank", type: "timed", sets: 3, targetSeconds: "20-45" },
+  { name: "Side Plank", type: "timed", sets: 2, targetSeconds: "15-30 / side" },
+  { name: "Pushups", type: "bodyweight", sets: 3, targetReps: "8-20" },
+  { name: "Chair Dips", type: "bodyweight", sets: 2, targetReps: "8-15" },
+  { name: "Step-ups", type: "bodyweight", sets: 2, targetReps: "8-12 / side" },
+  { name: "Glute Bridges", type: "bodyweight", sets: 2, targetReps: "10-20" },
+  { name: "Bird Dogs", type: "bodyweight", sets: 2, targetReps: "6-10 / side" },
+  { name: "Dead Bugs", type: "bodyweight", sets: 2, targetReps: "6-10 / side" },
+  { name: "Wall Sit", type: "timed", sets: 2, targetSeconds: "20-45" },
+  { name: "Band Rows", type: "band", sets: 2, targetReps: "10-15" },
+  { name: "Band Press", type: "band", sets: 2, targetReps: "10-15" },
+  { name: "Band Shoulder Press", type: "band", sets: 2, targetReps: "8-12" },
+  { name: "Band Curls", type: "band", sets: 2, targetReps: "10-15" },
+  { name: "Band Triceps Extensions", type: "band", sets: 2, targetReps: "10-15" },
+];
 const strengthExerciseDefinitions = [
   { name: "Bench Press", type: "weighted", primary: "Chest", secondary: ["Shoulders", "Arms"] },
   { name: "Dumbbell Press", type: "weighted", primary: "Chest", secondary: ["Shoulders", "Arms"] },
@@ -89,12 +121,27 @@ const strengthExerciseDefinitions = [
   { name: "Split Squat", type: "weighted", primary: "Legs", secondary: ["Core"] },
   { name: "Deadlift", type: "weighted", primary: "Legs", secondary: ["Back", "Core"] },
   { name: "Romanian Deadlift", type: "weighted", primary: "Legs", secondary: ["Back", "Core"] },
-  { name: "Pushup", type: "bodyweight", primary: "Chest", secondary: ["Shoulders", "Arms"] },
-  { name: "Incline Push-Ups", type: "bodyweight", primary: "Chest", secondary: ["Shoulders", "Arms"] },
+  { name: "Pushup", type: "bodyweight", primary: "Chest", secondary: ["Shoulders", "Arms", "Core"] },
+  { name: "Pushups", type: "bodyweight", primary: "Chest", secondary: ["Shoulders", "Arms", "Core"] },
+  { name: "Incline Push-Ups", type: "bodyweight", primary: "Chest", secondary: ["Shoulders", "Arms", "Core"] },
+  { name: "Incline Pushups", type: "bodyweight", primary: "Chest", secondary: ["Shoulders", "Arms", "Core"] },
+  { name: "Chair Dips", type: "bodyweight", primary: "Arms", secondary: ["Chest", "Shoulders"] },
+  { name: "Bodyweight Squats", type: "bodyweight", primary: "Legs", secondary: ["Core"] },
+  { name: "Lunges", type: "bodyweight", primary: "Legs", secondary: ["Core"] },
+  { name: "Step-ups", type: "bodyweight", primary: "Legs", secondary: ["Core"] },
   { name: "Plank", type: "timed", primary: "Core", secondary: [] },
-  { name: "Side Plank", type: "timed", primary: "Core", secondary: [] },
+  { name: "Side Plank", type: "timed", primary: "Core", secondary: ["Shoulders"] },
   { name: "Dead Bug", type: "bodyweight", primary: "Core", secondary: [] },
+  { name: "Dead Bugs", type: "bodyweight", primary: "Core", secondary: [] },
   { name: "Glute Bridge", type: "bodyweight", primary: "Legs", secondary: ["Core"] },
+  { name: "Glute Bridges", type: "bodyweight", primary: "Legs", secondary: ["Core"] },
+  { name: "Bird Dogs", type: "bodyweight", primary: "Core", secondary: ["Back"] },
+  { name: "Wall Sit", type: "timed", primary: "Legs", secondary: ["Core"] },
+  { name: "Band Rows", type: "band", primary: "Back", secondary: ["Arms"] },
+  { name: "Band Press", type: "band", primary: "Chest", secondary: ["Shoulders", "Arms"] },
+  { name: "Band Shoulder Press", type: "band", primary: "Shoulders", secondary: ["Arms"] },
+  { name: "Band Curls", type: "band", primary: "Arms", secondary: [] },
+  { name: "Band Triceps Extensions", type: "band", primary: "Arms", secondary: [] },
 ];
 const foodStructureItems = [
   {
@@ -307,12 +354,13 @@ const defaultStrengthPlan = {
   awayWorkout: {
     id: "away-maintenance",
     name: "Away from the Gym",
-    exercises: [
-      { name: "Incline Push-Ups", sets: 2, reps: "8-15" },
-      { name: "Split Squat", sets: 2, reps: "8-10 / side" },
-      { name: "Glute Bridge", sets: 2, reps: "10-15" },
-      { name: "Dead Bug", sets: 2, reps: "6 / side" },
-    ],
+    templateName: "Momentum Strength Session",
+    exercises: awayWorkoutExerciseLibrary.slice(0, 5).map((exercise) => ({
+      name: exercise.name,
+      sets: exercise.sets,
+      reps: exercise.targetReps || "",
+      seconds: exercise.targetSeconds || "",
+    })),
   },
   optionalFinishers: [
     {
@@ -1032,9 +1080,108 @@ function inferStrengthExerciseType(name, fallbackType = "weighted") {
   return getStrengthExerciseDefinition(name)?.type || fallbackType;
 }
 
+function getStrengthSourceType(source, exerciseType, explicitSourceType = "") {
+  if (explicitSourceType) {
+    return explicitSourceType;
+  }
+  if (source === "away_session") {
+    if (exerciseType === "timed") {
+      return "away_timed";
+    }
+    if (exerciseType === "band") {
+      return "away_band";
+    }
+    return "away_bodyweight";
+  }
+  if (exerciseType === "timed") {
+    return "gym_timed";
+  }
+  if (exerciseType === "weighted") {
+    return "gym_weighted";
+  }
+  return "gym_bodyweight";
+}
+
+function getAwayWorkoutIntensityMultiplier(intensity = "moderate") {
+  return awayWorkoutIntensityMultipliers[intensity] || 1;
+}
+
+function getBandResistanceMultiplier(level = "light") {
+  return bandResistanceMultipliers[level] || 1;
+}
+
+function createAwayWorkoutExerciseFromLibrary(exerciseDefinition) {
+  const exerciseType = exerciseDefinition?.type || inferStrengthExerciseType(exerciseDefinition?.name, "bodyweight");
+  return {
+    name: exerciseDefinition?.name || "Away Exercise",
+    exerciseType,
+    sets: Number(exerciseDefinition?.sets) || 2,
+    targetReps: exerciseDefinition?.targetReps || "",
+    targetSeconds: exerciseDefinition?.targetSeconds || "",
+    setsCompleted: 0,
+    repsCompleted: "",
+    secondsCompleted: "",
+    resistanceLevel: "light",
+    completed: false,
+  };
+}
+
+function createDefaultAwayWorkout(dateKey, awayWorkoutPlan = defaultStrengthPlan.awayWorkout) {
+  return {
+    date: dateKey,
+    workoutType: "Away From Gym",
+    templateName: awayWorkoutPlan?.templateName || defaultStrengthPlan.awayWorkout.templateName || "Momentum Strength Session",
+    durationMinutes: 20,
+    intensity: "moderate",
+    notes: "",
+    exercises: awayWorkoutExerciseLibrary.slice(0, 5).map((exercise) => createAwayWorkoutExerciseFromLibrary(exercise)),
+  };
+}
+
+function migrateAwayWorkoutExercise(rawExercise, dateKey) {
+  const libraryDefinition = awayWorkoutExerciseLibrary.find((exercise) => normalizeExerciseKey(exercise.name) === normalizeExerciseKey(rawExercise?.name));
+  const fallbackDefinition = getStrengthExerciseDefinition(rawExercise?.name);
+  const exerciseType = rawExercise?.exerciseType || libraryDefinition?.type || fallbackDefinition?.type || "bodyweight";
+  const defaultSets = Number(rawExercise?.sets ?? libraryDefinition?.sets ?? 2) || 2;
+  return {
+    name: rawExercise?.name || libraryDefinition?.name || "Away Exercise",
+    exerciseType,
+    sets: defaultSets,
+    targetReps: rawExercise?.targetReps || rawExercise?.reps || libraryDefinition?.targetReps || "",
+    targetSeconds: rawExercise?.targetSeconds || rawExercise?.seconds || libraryDefinition?.targetSeconds || "",
+    setsCompleted: clampNumber(rawExercise?.setsCompleted, 0, defaultSets, 0),
+    repsCompleted: rawExercise?.repsCompleted == null ? "" : String(rawExercise.repsCompleted).slice(0, 16),
+    secondsCompleted: rawExercise?.secondsCompleted == null ? "" : String(rawExercise.secondsCompleted).slice(0, 16),
+    resistanceLevel: ["light", "medium", "heavy"].includes(rawExercise?.resistanceLevel) ? rawExercise.resistanceLevel : "light",
+    completed: Boolean(rawExercise?.completed),
+  };
+}
+
+function migrateAwayWorkout(rawAwayWorkout, dateKey, awayWorkoutPlan = defaultStrengthPlan.awayWorkout) {
+  const base = createDefaultAwayWorkout(dateKey, awayWorkoutPlan);
+  if (!rawAwayWorkout) {
+    return base;
+  }
+  const rawExercises = Array.isArray(rawAwayWorkout.exercises) && rawAwayWorkout.exercises.length
+    ? rawAwayWorkout.exercises
+    : base.exercises;
+  return {
+    date: rawAwayWorkout.date || dateKey,
+    workoutType: rawAwayWorkout.workoutType || "Away From Gym",
+    templateName: rawAwayWorkout.templateName || base.templateName,
+    durationMinutes: Number(rawAwayWorkout.durationMinutes) || base.durationMinutes,
+    intensity: ["easy", "moderate", "hard"].includes(rawAwayWorkout.intensity) ? rawAwayWorkout.intensity : base.intensity,
+    notes: typeof rawAwayWorkout.notes === "string" ? rawAwayWorkout.notes.slice(0, 160) : "",
+    exercises: rawExercises.map((exercise) => migrateAwayWorkoutExercise(exercise, dateKey)),
+  };
+}
+
 function computeStrengthLogDerivedFields(log) {
   const definition = getStrengthExerciseDefinition(log.exercise);
   const exerciseType = log.exerciseType || definition?.type || "weighted";
+  const sourceType = getStrengthSourceType(log.source, exerciseType, log.sourceType);
+  const intensity = ["easy", "moderate", "hard"].includes(log.intensity) ? log.intensity : "moderate";
+  const resistanceLevel = ["light", "medium", "heavy"].includes(log.resistanceLevel) ? log.resistanceLevel : "light";
   const normalizedSets = Array.isArray(log.sets) ? log.sets.map((set) => ({
     reps: parseLoggedNumber(set?.reps),
     weight: parseLoggedNumber(set?.weight),
@@ -1044,46 +1191,71 @@ function computeStrengthLogDerivedFields(log) {
   let topSetE1RM = null;
   let bodyweightScore = null;
   let timedScore = null;
+  let bandScore = null;
+  let baseScore = null;
 
   if (exerciseType === "weighted") {
     const e1rms = normalizedSets
       .filter((set) => set.weight != null && set.reps != null)
       .map((set) => Number((set.weight * (1 + (set.reps / 30))).toFixed(1)));
     topSetE1RM = e1rms.length ? Math.max(...e1rms) : null;
+    baseScore = topSetE1RM;
   } else if (exerciseType === "timed") {
     const secondsTotal = normalizedSets.reduce((sum, set) => sum + (set.seconds || 0), 0);
     timedScore = secondsTotal || null;
+    baseScore = timedScore;
+  } else if (exerciseType === "band") {
+    const repsTotal = normalizedSets.reduce((sum, set) => sum + (set.reps || 0), 0);
+    bandScore = repsTotal ? Number((repsTotal * getBandResistanceMultiplier(resistanceLevel)).toFixed(1)) : null;
+    baseScore = bandScore;
   } else {
     const repsTotal = normalizedSets.reduce((sum, set) => sum + (set.reps || 0), 0);
     bodyweightScore = repsTotal || null;
+    baseScore = bodyweightScore;
   }
 
-  const performanceScore = topSetE1RM ?? bodyweightScore ?? timedScore ?? null;
+  const performanceScore = baseScore == null
+    ? null
+    : sourceType.startsWith("away_")
+      ? Number((baseScore * getAwayWorkoutIntensityMultiplier(intensity)).toFixed(1))
+      : baseScore;
   const muscleGroupContributions = [];
   if (definition && performanceScore != null) {
     muscleGroupContributions.push({
+      date: log.date,
+      exercise: log.exercise,
       muscleGroup: definition.primary,
       value: Number(performanceScore.toFixed ? performanceScore.toFixed(1) : performanceScore),
       weight: 1,
       role: "primary",
+      sourceType,
     });
     for (const secondary of definition.secondary || []) {
       const weightedValue = Number((performanceScore * 0.4).toFixed(1));
       muscleGroupContributions.push({
+        date: log.date,
+        exercise: log.exercise,
         muscleGroup: secondary,
         value: weightedValue,
         weight: 0.4,
         role: "secondary",
+        sourceType,
       });
     }
   }
 
   return {
     exerciseType,
+    sourceType,
+    intensity,
+    resistanceLevel,
     sets: normalizedSets,
     topSetE1RM,
     bodyweightScore,
     timedScore,
+    bandScore,
+    baseScore,
+    performanceScore,
     muscleGroupContributions,
   };
 }
@@ -1099,9 +1271,12 @@ function migrateStrengthLog(rawLog) {
     notes: typeof rawLog.notes === "string" ? rawLog.notes.slice(0, 160) : "",
     source: rawLog.source || "manual",
     sourceSessionId: rawLog.sourceSessionId || null,
+    sourceType: rawLog.sourceType || "",
     increaseNextTime: Boolean(rawLog.increaseNextTime),
     sets: Array.isArray(rawLog.sets) ? rawLog.sets : [],
     exerciseType: rawLog.exerciseType || inferStrengthExerciseType(rawLog.exercise, "weighted"),
+    intensity: rawLog.intensity || "moderate",
+    resistanceLevel: rawLog.resistanceLevel || "light",
   };
   return {
     ...base,
@@ -1132,6 +1307,7 @@ function buildStrengthLogsFromSession(session) {
       notes: exercise.note || session.note || "",
       source: "session",
       sourceSessionId: session.id,
+      sourceType: getStrengthSourceType("session", inferStrengthExerciseType(exercise.name, "weighted")),
       increaseNextTime: Boolean(exercise.increaseNextTime),
     };
     logs.push(migrateStrengthLog(baseLog));
@@ -1156,10 +1332,41 @@ function buildStrengthLogsFromSession(session) {
         notes: session.note || "",
         source: "session",
         sourceSessionId: session.id,
+        sourceType: getStrengthSourceType("session", inferStrengthExerciseType(exercise.name, "weighted")),
         increaseNextTime: Boolean(exercise.increaseNextTime),
       };
       logs.push(migrateStrengthLog(baseLog));
     }
+  }
+
+  for (const exercise of session.awayWorkout?.exercises || []) {
+    const setsCompleted = clampNumber(exercise.setsCompleted, 0, exercise.sets, 0);
+    const repsCompleted = parseLoggedNumber(exercise.repsCompleted);
+    const secondsCompleted = parseLoggedNumber(exercise.secondsCompleted);
+    const exerciseType = exercise.exerciseType || inferStrengthExerciseType(exercise.name, "bodyweight");
+    if (!setsCompleted || (exerciseType === "timed" ? secondsCompleted == null : repsCompleted == null)) {
+      continue;
+    }
+    const sets = Array.from({ length: setsCompleted }, () => ({
+      reps: exerciseType === "timed" ? "" : repsCompleted,
+      weight: "",
+      seconds: exerciseType === "timed" ? secondsCompleted : "",
+    }));
+    const baseLog = {
+      id: `${session.id}:away:${slugifyExerciseName(exercise.name)}`,
+      date: session.date,
+      exercise: exercise.name,
+      exerciseType,
+      sets,
+      notes: session.awayWorkout?.notes || session.note || "",
+      source: "away_session",
+      sourceSessionId: session.id,
+      sourceType: getStrengthSourceType("away_session", exerciseType),
+      intensity: session.awayWorkout?.intensity || "moderate",
+      resistanceLevel: exercise.resistanceLevel || "light",
+      increaseNextTime: false,
+    };
+    logs.push(migrateStrengthLog(baseLog));
   }
 
   return logs.filter(Boolean);
@@ -1275,6 +1482,7 @@ function migrateStrengthSession(session, strengthPlan = defaultStrengthPlan) {
     workoutScoreOverride: session.workoutScoreOverride == null ? null : Number(session.workoutScoreOverride),
     backSensitivity: Boolean(session.backSensitivity),
     awayWorkoutCompleted: Boolean(session.awayWorkoutCompleted),
+    awayWorkout: migrateAwayWorkout(session.awayWorkout, session.date || getTodayKey(), strengthPlan.awayWorkout || defaultStrengthPlan.awayWorkout),
     unableToTrain: Boolean(session.unableToTrain),
     unableReason: typeof session.unableReason === "string" ? session.unableReason.slice(0, 120) : "",
     note: typeof session.note === "string" ? session.note.slice(0, 160) : "",
@@ -3513,6 +3721,7 @@ function createStrengthSession(dateKey) {
     completed: false,
     backSensitivity: false,
     awayWorkoutCompleted: false,
+    awayWorkout: createDefaultAwayWorkout(dateKey, state.strengthPlan?.awayWorkout || defaultStrengthPlan.awayWorkout),
     unableToTrain: false,
     unableReason: "",
     optionalFinishers: (state.strengthPlan.optionalFinishers || []).map((finisher) => ({
@@ -3600,49 +3809,67 @@ function getStrengthGroupEmptyTotals() {
   return Object.fromEntries(strengthPrimaryCategories.map((group) => [group, 0]));
 }
 
-function buildStrengthDailyContributionMap(logs) {
+function buildStrengthDailyContributionSources(logs) {
   const byDay = new Map();
-  const byExerciseDay = new Map();
 
   for (const rawLog of logs) {
     const log = migrateStrengthLog(rawLog);
-    if (!log || !log.date || !log.exercise) {
+    if (!log || !log.date || !log.exercise || !log.muscleGroupContributions?.length) {
       continue;
     }
-    const definition = getStrengthExerciseDefinition(log.exercise);
-    if (!definition) {
-      continue;
+    const dayState = byDay.get(log.date) || {
+      weighted: getStrengthGroupEmptyTotals(),
+      support: getStrengthGroupEmptyTotals(),
+      away: getStrengthGroupEmptyTotals(),
+      awayExercises: Object.fromEntries(strengthPrimaryCategories.map((group) => [group, {}])),
+    };
+    for (const contribution of log.muscleGroupContributions) {
+      const bucket = weightedStrengthSourceTypes.has(contribution.sourceType) ? "weighted" : "support";
+      dayState[bucket][contribution.muscleGroup] = Number((dayState[bucket][contribution.muscleGroup] + contribution.value).toFixed(1));
+      if (awayStrengthSourceTypes.has(contribution.sourceType)) {
+        dayState.away[contribution.muscleGroup] = Number((dayState.away[contribution.muscleGroup] + contribution.value).toFixed(1));
+        const exerciseMap = dayState.awayExercises[contribution.muscleGroup] || {};
+        exerciseMap[contribution.exercise] = Number(((exerciseMap[contribution.exercise] || 0) + contribution.value).toFixed(1));
+        dayState.awayExercises[contribution.muscleGroup] = exerciseMap;
+      }
     }
-    const score = log.topSetE1RM ?? log.bodyweightScore ?? log.timedScore;
-    if (score == null) {
-      continue;
-    }
-    const key = `${log.date}::${normalizeExerciseKey(log.exercise)}`;
-    const existing = byExerciseDay.get(key);
-    if (!existing || score > existing.score) {
-      byExerciseDay.set(key, { date: log.date, definition, score });
-    }
-  }
-
-  for (const item of byExerciseDay.values()) {
-    const totals = byDay.get(item.date) || getStrengthGroupEmptyTotals();
-    totals[item.definition.primary] = Number((totals[item.definition.primary] + item.score).toFixed(1));
-    for (const secondary of item.definition.secondary || []) {
-      totals[secondary] = Number((totals[secondary] + (item.score * 0.4)).toFixed(1));
-    }
-    byDay.set(item.date, totals);
+    byDay.set(log.date, dayState);
   }
 
   return byDay;
 }
 
-function averageStrengthGroupForWindow(dayMap, startDate, endDate, group) {
+function blendStrengthSignal(weightedValue, supportValue) {
+  if (weightedValue != null && supportValue != null) {
+    return Number(((weightedValue * 0.7) + (supportValue * 0.3)).toFixed(1));
+  }
+  return weightedValue ?? supportValue ?? null;
+}
+
+function buildStrengthDailyContributionMap(logs) {
+  const sourceMap = buildStrengthDailyContributionSources(logs);
+  const blended = new Map();
+  for (const [dateKey, dayState] of sourceMap.entries()) {
+    const totals = getStrengthGroupEmptyTotals();
+    for (const group of strengthPrimaryCategories) {
+      totals[group] = blendStrengthSignal(
+        dayState.weighted[group] > 0 ? dayState.weighted[group] : null,
+        dayState.support[group] > 0 ? dayState.support[group] : null
+      );
+    }
+    blended.set(dateKey, totals);
+  }
+  return blended;
+}
+
+function averageStrengthGroupForWindow(dayMap, startDate, endDate, group, sourceKey = "") {
   const values = [];
   for (const [dateKey, totals] of dayMap.entries()) {
     if (dateKey < startDate || dateKey > endDate) {
       continue;
     }
-    const value = totals[group];
+    const sourceTotals = sourceKey ? totals[sourceKey] : totals;
+    const value = sourceTotals[group];
     if (value != null && value > 0) {
       values.push(value);
     }
@@ -3663,10 +3890,23 @@ function getStrengthTrendStatus(percentChange, currentAvg, previousAvg) {
   return "Stable";
 }
 
+function getTopAwaySupportExerciseForWindow(sourceMap, startDate, endDate, group) {
+  const totals = {};
+  for (const [dateKey, dayState] of sourceMap.entries()) {
+    if (dateKey < startDate || dateKey > endDate) {
+      continue;
+    }
+    for (const [exercise, value] of Object.entries(dayState.awayExercises[group] || {})) {
+      totals[exercise] = (totals[exercise] || 0) + value;
+    }
+  }
+  return Object.entries(totals).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+}
+
 function computeStrengthTrendSummary(loggedEntries = [], weekly = null) {
   const todayKey = getTodayKey();
   const allLogs = (state.strengthLogs || []).filter((log) => log?.date && log.date < todayKey);
-  const dayMap = buildStrengthDailyContributionMap(allLogs);
+  const sourceMap = buildStrengthDailyContributionSources(allLogs);
   const end = new Date(`${todayKey}T12:00:00`);
   end.setDate(end.getDate() - 1);
   const currentStart = new Date(end);
@@ -3681,18 +3921,46 @@ function computeStrengthTrendSummary(loggedEntries = [], weekly = null) {
   const previousEndKey = previousEnd.toISOString().slice(0, 10);
 
   const groups = strengthPrimaryCategories.map((group) => {
-    const currentAvg = averageStrengthGroupForWindow(dayMap, currentStartKey, currentEndKey, group);
-    const previousAvg = averageStrengthGroupForWindow(dayMap, previousStartKey, previousEndKey, group);
-    const percentChange = currentAvg != null && previousAvg != null && previousAvg > 0
-      ? Number((((currentAvg - previousAvg) / previousAvg) * 100).toFixed(1))
+    const currentWeightedAvg = averageStrengthGroupForWindow(sourceMap, currentStartKey, currentEndKey, group, "weighted");
+    const previousWeightedAvg = averageStrengthGroupForWindow(sourceMap, previousStartKey, previousEndKey, group, "weighted");
+    const currentSupportAvg = averageStrengthGroupForWindow(sourceMap, currentStartKey, currentEndKey, group, "support");
+    const previousSupportAvg = averageStrengthGroupForWindow(sourceMap, previousStartKey, previousEndKey, group, "support");
+    const currentAvg = blendStrengthSignal(currentWeightedAvg, currentSupportAvg);
+    const previousAvg = blendStrengthSignal(previousWeightedAvg, previousSupportAvg);
+    const weightedChange = currentWeightedAvg != null && previousWeightedAvg != null && previousWeightedAvg > 0
+      ? ((currentWeightedAvg - previousWeightedAvg) / previousWeightedAvg) * 100
       : null;
+    const supportChange = currentSupportAvg != null && previousSupportAvg != null && previousSupportAvg > 0
+      ? ((currentSupportAvg - previousSupportAvg) / previousSupportAvg) * 100
+      : null;
+    const percentChange = weightedChange != null
+      ? supportChange != null
+        ? Number(((weightedChange * 0.7) + (supportChange * 0.3)).toFixed(1))
+        : Number(weightedChange.toFixed(1))
+      : supportChange != null
+        ? Number(supportChange.toFixed(1))
+        : null;
     const status = getStrengthTrendStatus(percentChange, currentAvg, previousAvg);
+    const awayAnchor = getTopAwaySupportExerciseForWindow(sourceMap, currentStartKey, currentEndKey, group);
+    let supportNote = "";
+    if (currentWeightedAvg == null && currentSupportAvg != null) {
+      supportNote = awayAnchor
+        ? `Building bodyweight baseline from ${awayAnchor.toLowerCase()} work`
+        : "Building bodyweight baseline";
+    } else if (awayAnchor) {
+      supportNote = `Supported by away-from-gym ${awayAnchor.toLowerCase()} work`;
+    }
     return {
       group,
       currentAvg,
       previousAvg,
+      currentWeightedAvg,
+      previousWeightedAvg,
+      currentSupportAvg,
+      previousSupportAvg,
       percentChange,
       status,
+      supportNote,
     };
   });
 
@@ -3709,6 +3977,8 @@ function computeStrengthTrendSummary(loggedEntries = [], weekly = null) {
         insight = "Strength is stable while weight is dropping. This is still a good sign.";
       } else if (decliningGroups > 0 && weightDown) {
         insight = "Strength is declining while weight is dropping. Watch recovery, protein, and whether the calorie deficit is too aggressive.";
+      } else if (groups.some((item) => item.supportNote)) {
+        insight = "Away-from-the-gym work is helping preserve the strength signal while the baseline keeps building.";
       } else if (improvingGroups > 0) {
         insight = "Strength is improving. Keep stacking clean work and let the averages do their job.";
       } else {
@@ -4338,7 +4608,8 @@ function renderStrengthCard(summary) {
   const dateKey = getSelectedDateKey();
   const workout = getWorkoutPlan();
   const session = summary.strength.session;
-  const awayWorkout = state.strengthPlan.awayWorkout || defaultStrengthPlan.awayWorkout;
+  const awayWorkoutPlan = state.strengthPlan.awayWorkout || defaultStrengthPlan.awayWorkout;
+  const sessionAwayWorkout = session?.awayWorkout || createDefaultAwayWorkout(dateKey, awayWorkoutPlan);
   const isDue = summary.strength.status === "due";
   const isInProgress = summary.strength.status === "in_progress";
   const isComplete = summary.strength.status === "complete";
@@ -4361,6 +4632,9 @@ function renderStrengthCard(summary) {
     ...workout.exercises.map((item) => item.name),
     ...finisherDefs.flatMap((finisher) => finisher.exercises.map((item) => item.name)),
   ]));
+  const awayAvailableOptions = awayWorkoutExerciseLibrary.filter((exercise) =>
+    !(sessionAwayWorkout.exercises || []).some((item) => normalizeExerciseKey(item.name) === normalizeExerciseKey(exercise.name))
+  );
   const exercises = (session?.exercises || workout.exercises.map((exercise) => ({
     ...exercise,
     targetSets: exercise.sets,
@@ -4507,10 +4781,88 @@ function renderStrengthCard(summary) {
     </details>
     <div class="strength-status-card">
       <div class="today-focus-label">Away from the Gym</div>
-      <div class="strength-exercise-meta">${escapeHtml(awayWorkout.exercises.map((exercise) => `${exercise.name} ${exercise.sets} x ${exercise.reps}`).join(" | "))}</div>
+      <div class="strength-exercise-meta">${escapeHtml(sessionAwayWorkout.templateName || awayWorkoutPlan.templateName || "Momentum Strength Session")}</div>
+      <div class="quick-fields away-workout-meta">
+        <label class="quick-field compact">
+          <span>Date</span>
+          <input type="date" value="${escapeHtml(session?.date || dateKey)}" disabled>
+        </label>
+        <label class="quick-field compact">
+          <span>Minutes</span>
+          <input id="away-workout-duration" data-away-field="durationMinutes" type="number" min="5" max="120" step="5" value="${escapeHtml(String(sessionAwayWorkout.durationMinutes ?? 20))}">
+        </label>
+        <label class="quick-field compact">
+          <span>Intensity</span>
+          <select id="away-workout-intensity" data-away-field="intensity">
+            <option value="easy" ${sessionAwayWorkout.intensity === "easy" ? "selected" : ""}>Easy</option>
+            <option value="moderate" ${sessionAwayWorkout.intensity !== "easy" && sessionAwayWorkout.intensity !== "hard" ? "selected" : ""}>Moderate</option>
+            <option value="hard" ${sessionAwayWorkout.intensity === "hard" ? "selected" : ""}>Hard</option>
+          </select>
+        </label>
+      </div>
+      <div class="strength-exercise-meta">Bodyweight / band work counts here. Log it and it will support the same strength trends.</div>
+      <div class="away-workout-list">
+        ${(sessionAwayWorkout.exercises || []).map((exercise, exerciseIndex) => {
+          const definition = getStrengthExerciseDefinition(exercise.name);
+          const isTimed = (exercise.exerciseType || definition?.type) === "timed";
+          const isBand = (exercise.exerciseType || definition?.type) === "band";
+          const lastAwayLog = (state.strengthLogs || [])
+            .filter((log) => log.source === "away_session" && normalizeExerciseKey(log.exercise) === normalizeExerciseKey(exercise.name))
+            .sort((a, b) => a.date.localeCompare(b.date))
+            .slice(-1)[0];
+          const lastSets = lastAwayLog?.sets?.length || 0;
+          const lastReps = lastAwayLog?.sets?.[0]?.reps ?? "";
+          const lastSeconds = lastAwayLog?.sets?.[0]?.seconds ?? "";
+          const lastSummary = isTimed
+            ? (lastSets && lastSeconds ? `${lastSets} x ${lastSeconds} sec` : "")
+            : (lastSets && lastReps ? `${lastSets} x ${lastReps}${isBand ? ` (${lastAwayLog?.resistanceLevel || "light"})` : ""}` : "");
+          return `
+            <div class="away-exercise-row">
+              <div class="away-exercise-top">
+                <div>
+                  <div class="strength-exercise-name">${escapeHtml(exercise.name)}</div>
+                  <div class="strength-exercise-meta">Target ${escapeHtml(String(exercise.sets))} x ${escapeHtml(isTimed ? (exercise.targetSeconds || "--") : (exercise.targetReps || "--"))}</div>
+                  ${lastSummary ? `<div class="strength-exercise-meta">Last away: ${escapeHtml(lastSummary)}</div>` : ""}
+                </div>
+                <button type="button" class="secondary-button compact away-remove-button" data-away-remove="${exerciseIndex}">Remove</button>
+              </div>
+              <div class="away-compact-labels">
+                <span>Sets</span>
+                <span>${isTimed ? "Sec" : "Reps"}</span>
+                ${isBand ? "<span>Band</span>" : "<span>&nbsp;</span>"}
+              </div>
+              <div class="away-compact-row">
+                <input data-away-exercise="${exerciseIndex}" data-away-exercise-field="setsCompleted" type="number" min="0" max="${exercise.sets}" inputmode="numeric" placeholder="sets" value="${escapeHtml(String(exercise.setsCompleted ?? ""))}">
+                ${isTimed
+                  ? `<input data-away-exercise="${exerciseIndex}" data-away-exercise-field="secondsCompleted" type="text" inputmode="decimal" placeholder="sec" value="${escapeHtml(String(exercise.secondsCompleted ?? ""))}">`
+                  : `<input data-away-exercise="${exerciseIndex}" data-away-exercise-field="repsCompleted" type="text" inputmode="decimal" placeholder="reps" value="${escapeHtml(String(exercise.repsCompleted ?? ""))}">`}
+                ${isBand
+                  ? `<select data-away-exercise="${exerciseIndex}" data-away-exercise-field="resistanceLevel">
+                      <option value="light" ${exercise.resistanceLevel === "light" ? "selected" : ""}>Light</option>
+                      <option value="medium" ${exercise.resistanceLevel === "medium" ? "selected" : ""}>Med</option>
+                      <option value="heavy" ${exercise.resistanceLevel === "heavy" ? "selected" : ""}>Heavy</option>
+                    </select>`
+                  : `<span class="away-input-filler"></span>`}
+              </div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+      <div class="away-add-row">
+        <select id="away-add-exercise">
+          <option value="">Add movement</option>
+          ${awayAvailableOptions.map((exercise) => `<option value="${escapeHtml(exercise.name)}">${escapeHtml(exercise.name)}</option>`).join("")}
+        </select>
+        <button id="away-add-button" type="button" class="secondary-button compact">Add</button>
+        <button id="away-reset-template" type="button" class="secondary-button compact">Reset template</button>
+      </div>
       <label class="checkbox-row compact">
         <input id="away-workout-completed" type="checkbox" ${session?.awayWorkoutCompleted ? "checked" : ""}>
         Completed Away Workout
+      </label>
+      <label class="quick-field quick-notes compact">
+        <span>Away notes</span>
+        <input id="away-workout-notes" data-away-field="notes" type="text" maxlength="160" value="${escapeHtml(sessionAwayWorkout.notes || "")}" placeholder="hotel gym, bands, short session">
       </label>
     </div>
     <div class="strength-footer">
@@ -4621,6 +4973,19 @@ function renderStrengthCard(summary) {
     input.addEventListener("change", handleFinisherIncreaseToggle);
   }
   document.getElementById("away-workout-completed")?.addEventListener("change", handleAwayWorkoutToggle);
+  for (const input of strengthCard.querySelectorAll("[data-away-field]")) {
+    input.addEventListener("input", handleAwayWorkoutDraftChange);
+    input.addEventListener("change", handleAwayWorkoutDraftChange);
+  }
+  for (const input of strengthCard.querySelectorAll("[data-away-exercise-field]")) {
+    input.addEventListener("input", handleAwayWorkoutExerciseDraftChange);
+    input.addEventListener("change", handleAwayWorkoutExerciseDraftChange);
+  }
+  for (const button of strengthCard.querySelectorAll("[data-away-remove]")) {
+    button.addEventListener("click", handleAwayWorkoutExerciseRemove);
+  }
+  document.getElementById("away-add-button")?.addEventListener("click", addAwayWorkoutExercise);
+  document.getElementById("away-reset-template")?.addEventListener("click", resetAwayWorkoutTemplate);
   document.getElementById("strength-unable-to-train")?.addEventListener("change", handleUnableToTrainToggle);
   const saveWorkoutButton = document.getElementById("save-strength-session");
   if (saveWorkoutButton) {
@@ -4661,7 +5026,10 @@ function renderProgress(summary) {
     const suffix = item.percentChange == null ? "" : ` ${item.percentChange > 0 ? "+" : ""}${formatMaybe(item.percentChange, 1)}%`;
     return `
       <div class="strength-trend-row">
-        <span>${escapeHtml(item.group)}</span>
+        <div>
+          <span>${escapeHtml(item.group)}</span>
+          ${item.supportNote ? `<div class="strength-trend-note">${escapeHtml(item.supportNote)}</div>` : ""}
+        </div>
         <strong>${escapeHtml(item.status)}${escapeHtml(suffix)}</strong>
       </div>
     `;
@@ -4776,6 +5144,84 @@ function handleAwayWorkoutToggle(event) {
   render();
 }
 
+function handleAwayWorkoutDraftChange(event) {
+  const session = getEditableStrengthSession();
+  session.awayWorkout = session.awayWorkout || createDefaultAwayWorkout(session.date);
+  const field = event.target.dataset.awayField;
+  if (!field) {
+    return;
+  }
+  session.awayWorkout[field] = field === "durationMinutes"
+    ? Number(event.target.value) || 0
+    : event.target.value;
+  state.meta.currentStrengthSession = session;
+}
+
+function handleAwayWorkoutExerciseDraftChange(event) {
+  const session = getEditableStrengthSession();
+  session.awayWorkout = session.awayWorkout || createDefaultAwayWorkout(session.date);
+  const exerciseIndex = Number(event.target.dataset.awayExercise);
+  const field = event.target.dataset.awayExerciseField;
+  const exercise = session.awayWorkout.exercises?.[exerciseIndex];
+  if (!exercise || !field) {
+    return;
+  }
+  exercise[field] = field === "setsCompleted" ? event.target.value : event.target.value;
+  exercise.completed = Boolean(Number(exercise.setsCompleted) > 0 || exercise.repsCompleted || exercise.secondsCompleted);
+  if (exercise.completed) {
+    session.awayWorkoutCompleted = true;
+    session.unableToTrain = false;
+    session.unableReason = "";
+    const checkbox = document.getElementById("away-workout-completed");
+    if (checkbox) {
+      checkbox.checked = true;
+    }
+  }
+  state.meta.currentStrengthSession = session;
+}
+
+function handleAwayWorkoutExerciseRemove(event) {
+  const session = getEditableStrengthSession();
+  session.awayWorkout = session.awayWorkout || createDefaultAwayWorkout(session.date);
+  const exerciseIndex = Number(event.currentTarget.dataset.awayRemove);
+  if (Number.isNaN(exerciseIndex)) {
+    return;
+  }
+  session.awayWorkout.exercises = (session.awayWorkout.exercises || []).filter((_, index) => index !== exerciseIndex);
+  const hasAwayData = session.awayWorkout.exercises.some((exercise) =>
+    Number(exercise.setsCompleted || 0) > 0 && (exercise.repsCompleted || exercise.secondsCompleted)
+  );
+  session.awayWorkoutCompleted = hasAwayData ? session.awayWorkoutCompleted : false;
+  state.meta.currentStrengthSession = session;
+  render();
+}
+
+function addAwayWorkoutExercise() {
+  const session = getEditableStrengthSession();
+  session.awayWorkout = session.awayWorkout || createDefaultAwayWorkout(session.date);
+  const select = document.getElementById("away-add-exercise");
+  const selectedName = select?.value || "";
+  const definition = awayWorkoutExerciseLibrary.find((exercise) => normalizeExerciseKey(exercise.name) === normalizeExerciseKey(selectedName));
+  if (!definition) {
+    setStatus("Choose a movement to add.");
+    return;
+  }
+  session.awayWorkout.exercises = [
+    ...(session.awayWorkout.exercises || []),
+    createAwayWorkoutExerciseFromLibrary(definition),
+  ];
+  state.meta.currentStrengthSession = session;
+  render();
+}
+
+function resetAwayWorkoutTemplate() {
+  const session = getEditableStrengthSession();
+  session.awayWorkout = createDefaultAwayWorkout(session.date);
+  session.awayWorkoutCompleted = false;
+  state.meta.currentStrengthSession = session;
+  render();
+}
+
 function handleUnableToTrainToggle(event) {
   const session = getEditableStrengthSession();
   session.unableToTrain = event.target.checked;
@@ -4863,7 +5309,27 @@ function saveStrengthSession() {
   session.note = (document.getElementById("strength-note")?.value || "").trim().slice(0, 160);
   session.workoutScoreOverride = null;
   session.backSensitivity = Boolean(document.getElementById("strength-back-sensitivity")?.checked);
-  session.awayWorkoutCompleted = Boolean(document.getElementById("away-workout-completed")?.checked);
+  session.awayWorkout = session.awayWorkout || createDefaultAwayWorkout(session.date);
+  session.awayWorkout.durationMinutes = Number(document.getElementById("away-workout-duration")?.value || session.awayWorkout.durationMinutes || 20) || 20;
+  session.awayWorkout.intensity = document.getElementById("away-workout-intensity")?.value || session.awayWorkout.intensity || "moderate";
+  session.awayWorkout.notes = (document.getElementById("away-workout-notes")?.value || session.awayWorkout.notes || "").trim().slice(0, 160);
+  session.awayWorkout.exercises = (session.awayWorkout.exercises || []).map((exercise) => {
+    const setsCompleted = clampNumber(exercise.setsCompleted, 0, exercise.sets, 0);
+    const repsCompleted = typeof exercise.repsCompleted === "string" ? exercise.repsCompleted.trim().slice(0, 16) : String(exercise.repsCompleted || "").slice(0, 16);
+    const secondsCompleted = typeof exercise.secondsCompleted === "string" ? exercise.secondsCompleted.trim().slice(0, 16) : String(exercise.secondsCompleted || "").slice(0, 16);
+    return {
+      ...exercise,
+      setsCompleted,
+      repsCompleted,
+      secondsCompleted,
+      completed: Boolean(setsCompleted && ((exercise.exerciseType === "timed" && secondsCompleted) || (exercise.exerciseType !== "timed" && repsCompleted))),
+      resistanceLevel: ["light", "medium", "heavy"].includes(exercise.resistanceLevel) ? exercise.resistanceLevel : "light",
+    };
+  });
+  const hasAwayData = session.awayWorkout.exercises.some((exercise) =>
+    exercise.setsCompleted > 0 && ((exercise.exerciseType === "timed" && exercise.secondsCompleted) || (exercise.exerciseType !== "timed" && exercise.repsCompleted))
+  );
+  session.awayWorkoutCompleted = Boolean(document.getElementById("away-workout-completed")?.checked) || hasAwayData;
   session.unableToTrain = Boolean(document.getElementById("strength-unable-to-train")?.checked);
   session.unableReason = (document.getElementById("strength-unable-reason")?.value || "").trim().slice(0, 120);
   if (session.unableToTrain) {
@@ -5434,6 +5900,14 @@ function renderStrengthTrendChart(summary, range = "all") {
     }
     return { ...item, segments };
   });
+  const pointMarkup = validSeries.map((item) => item.data.map((point) => {
+    if (point.value == null) {
+      return "";
+    }
+    const x = getXForDate(point.date);
+    const y = chartBottom - ((point.value - min) / rangeValue) * (chartBottom - padding);
+    return `<circle cx="${x}" cy="${y}" r="3.5" class="strength-trend-point" style="fill:${item.color}"></circle>`;
+  }).join("")).join("");
 
   return `
     <details class="compact-details strength-trend-details">
@@ -5444,6 +5918,7 @@ function renderStrengthTrendChart(summary, range = "all") {
       <svg viewBox="0 0 ${width} ${height}" class="trend-chart" role="img" aria-label="Strength trend lines by muscle group">
         <line x1="${padding}" y1="${chartBottom}" x2="${width - padding}" y2="${chartBottom}" class="axis-line"></line>
         ${polylines.map((item) => item.segments.map((points) => `<polyline points="${points}" class="trend-line strength-trend-line" style="stroke:${item.color}"></polyline>`).join("")).join("")}
+        ${pointMarkup}
         ${xTicks.map((tick) => `
           <g class="chart-x-tick">
             <line x1="${tick.x}" y1="${chartBottom}" x2="${tick.x}" y2="${chartBottom + 5}" class="axis-line"></line>

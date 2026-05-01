@@ -1414,10 +1414,17 @@ button,
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  align-items: center;
+  align-items: flex-start;
   padding: 8px 10px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.82);
+}
+
+.strength-trend-note {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
 }
 
 .strength-trend-insight {
@@ -1640,6 +1647,69 @@ button,
 .manual-strength-grid {
   display: grid;
   gap: 10px;
+}
+
+.away-workout-meta {
+  margin-top: 2px;
+}
+
+.away-workout-list {
+  display: grid;
+  gap: 10px;
+}
+
+.away-exercise-row {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.away-exercise-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.away-compact-labels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.away-compact-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.away-compact-row input,
+.away-compact-row select,
+.away-add-row select {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.away-input-filler {
+  display: block;
+  min-height: 38px;
+}
+
+.away-add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
 }
 
 .manual-strength-set-list {
@@ -1879,6 +1949,11 @@ button,
 
 .strength-trend-line {
   stroke-width: 2.5;
+}
+
+.strength-trend-point {
+  stroke: rgba(255, 255, 255, 0.92);
+  stroke-width: 1.2;
 }
 
 .guardrail-list {
