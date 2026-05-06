@@ -640,6 +640,44 @@ button,
   gap: 10px;
 }
 
+.score-guide-details {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.score-guide-details.compact {
+  padding: 10px 12px;
+}
+
+.score-guide-details > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--brand);
+}
+
+.score-guide-copy,
+.score-guide-questions,
+.score-guide-item span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.score-guide-questions,
+.score-guide-list {
+  display: grid;
+  gap: 6px;
+}
+
+.score-guide-item {
+  display: grid;
+  gap: 2px;
+}
+
 .meal-behavior-grid.compact {
   gap: 8px;
 }

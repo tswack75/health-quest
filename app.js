@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.15.1";
+const APP_VERSION = "v4.16.0";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -31,6 +31,17 @@ const mealBehaviorItems = [
     weight: 0.15,
   },
 ];
+// Food score guide text lives here so the in-app guide and the score reminders
+// stay in sync and are easy to revise later without chasing strings through render code.
+const foodScoreGuide = {
+  title: "Food Score Guide",
+  stackingNote: "Watch for stacking: multiple calorie-dense foods in one meal or snack can quietly turn a 1-2 into a 2-3.",
+  questions: [
+    "Did this have a clear structure: protein + plants/fruit + controlled extras?",
+    "Did I stack multiple calorie-dense foods?",
+    "How did I feel afterward: light/satisfied, drifty, full, or stuffed?",
+  ],
+};
 const alcoholOptions = [
   { value: "none", label: "None" },
   { value: "1", label: "1 drink" },
@@ -39,11 +50,11 @@ const alcoholOptions = [
 ];
 const mealScoreOptions = [
   { value: 0, shortLabel: "0 N/A", label: "Skipped / N/A", helper: "Did not eat, skipped, or not applicable." },
-  { value: 1, shortLabel: "1 On track", label: "On track", helper: "Ate with control. Appropriate portion. No real drift." },
-  { value: 2, shortLabel: "2 Solid", label: "Controlled, not perfect", helper: "Not ideal, but still handled like an adult." },
-  { value: 3, shortLabel: "3 Drift", label: "Mindful drift", helper: "Started drifting, but did not fully lose the wheel." },
-  { value: 4, shortLabel: "4 Full", label: "Ate until full", helper: "Ate until full instead of stopping at enough." },
-  { value: 5, shortLabel: "5 Stuffed", label: "Stuffed", helper: "Clearly overdid it and felt it." },
+  { value: 1, shortLabel: "1 Intentional", label: "Built With Intention", helper: "Ate with structure, control, and appropriate portions. Satisfied, not full.", reminder: "Clearly aligned with your goals: structured, controlled, satisfied." },
+  { value: 2, shortLabel: "2 Controlled", label: "Controlled Flexibility", helper: "Mostly solid, but with one indulgent or calorie-dense element. Still under control.", reminder: "Structured meal, one flexible element, still intentional." },
+  { value: 3, shortLabel: "3 Drift", label: "Drift", helper: "Structure loosened or stacking showed up, but you were still mindful and not stuffed.", reminder: "Mindful, but structure drifted or stacking showed up." },
+  { value: 4, shortLabel: "4 Overfull", label: "Overfull", helper: "You knowingly ate past enough and ended up full.", reminder: "You kept eating past satisfied and clearly overate." },
+  { value: 5, shortLabel: "5 Stuffed", label: "Stuffed / Spiral", helper: "Stuffed, uncomfortable, or in a screw-it spiral.", reminder: "This felt stuffed, uncomfortable, or clearly out of control." },
 ];
 const mealBehaviorQualityMap = {
   0: null,
@@ -245,41 +256,41 @@ const foodOptions = {
     bucket: "n/a",
   },
   1: {
-    shortLabel: "On track",
-    label: "On track",
-    description: "Ate with control. Appropriate portion. No real drift.",
+    shortLabel: "Intentional",
+    label: "Built With Intention",
+    description: "Protein-centered, portion-controlled, and clearly aligned with your goals. Satisfied, not full.",
     quality: 1,
     score: 1,
     bucket: "in_control",
   },
   2: {
-    shortLabel: "Solid",
-    label: "Controlled, not perfect",
-    description: "Good food with larger portions, or worse food with solid portion control. Still a real win.",
+    shortLabel: "Controlled",
+    label: "Controlled Flexibility",
+    description: "Structured meal with one indulgent or calorie-dense element. Still a real-world win.",
     quality: 0.88,
     score: 0.88,
     bucket: "in_control",
   },
   3: {
     shortLabel: "Drift",
-    label: "Worse food, less control, still mindful",
-    description: "Noticeable drift. Portions or food quality got loose, but awareness remained.",
+    label: "Drift",
+    description: "Structure broke down or stacking showed up, but awareness remained and you were not stuffed.",
     quality: 0.58,
     score: 0.58,
     bucket: "warning",
   },
   4: {
-    shortLabel: "Full",
-    label: "Ate until full",
-    description: "Clearly overeaten. Ate to fullness instead of stopping at enough.",
+    shortLabel: "Overfull",
+    label: "Overfull",
+    description: "You knowingly overate and finished physically full.",
     quality: 0.22,
     score: 0.22,
     bucket: "off_track",
   },
   5: {
     shortLabel: "Stuffed",
-    label: "Stuffed",
-    description: "Obvious loss of control. Ate well past enough and felt it.",
+    label: "Stuffed / Spiral",
+    description: "You felt stuffed, uncomfortable, or in a screw-it spiral.",
     quality: 0,
     score: 0,
     bucket: "off_track",
@@ -2014,11 +2025,32 @@ function getUnifiedFoodMetric(day) {
   return legacyAverage == null ? null : Number(Math.max(0, 5 - legacyAverage).toFixed(1));
 }
 
+function renderFoodScoreGuide(compact = false) {
+  return `
+    <details class="score-guide-details ${compact ? "compact" : ""}">
+      <summary>How to score this</summary>
+      <div class="score-guide-copy">${escapeHtml(foodScoreGuide.stackingNote)}</div>
+      <div class="score-guide-questions">
+        ${foodScoreGuide.questions.map((question, index) => `<div><strong>${index + 1}.</strong> ${escapeHtml(question)}</div>`).join("")}
+      </div>
+      <div class="score-guide-list">
+        ${mealScoreOptions.map((option) => `
+          <div class="score-guide-item">
+            <strong>${escapeHtml(option.shortLabel)}</strong>
+            <span>${escapeHtml(option.helper)}</span>
+          </div>
+        `).join("")}
+      </div>
+    </details>
+  `;
+}
+
 function renderFoodLog() {
   const entry = getEntry(getSelectedDateKey());
   if (shouldUseMealV2UI(entry)) {
     const preview = scoreFood({ ...entry, foodModel: "meal-v2", mealBehavior: readMealBehaviorForm(entry.mealBehavior) });
     foodLog.innerHTML = `
+      ${renderFoodScoreGuide(false)}
       <div class="meal-behavior-grid">
         ${mealBehaviorItems.map((item) => {
           const meal = entry.mealBehavior?.[item.key] || {};
@@ -2036,7 +2068,7 @@ function renderFoodLog() {
                   </label>
                 `).join("")}
               </div>
-              <div class="strength-exercise-meta">${escapeHtml(mealScoreOptions.find((option) => option.value === meal.score)?.helper || "Score meals by control and portion awareness, not purity.")}</div>
+              <div class="strength-exercise-meta">${escapeHtml(mealScoreOptions.find((option) => option.value === meal.score)?.reminder || "Rate this by structure, portions, stacking, and how it felt afterward.")}</div>
               <div class="meal-flag-row">
                 <label class="checkbox-row compact"><input id="meal-confidence-${item.key}" type="checkbox" ${meal.confidence ? "checked" : ""}> In control</label>
                 <label class="checkbox-row compact"><input id="meal-protein-${item.key}" type="checkbox" ${meal.protein ? "checked" : ""}> Protein anchor</label>
@@ -2049,7 +2081,7 @@ function renderFoodLog() {
         <div class="food-structure-score">Nutrition Score: ${formatMaybe(preview.nutritionScore, 0)}</div>
         <div class="food-structure-rating">${escapeHtml(preview.foodStructureRating)}</div>
         <div class="food-structure-coaching">${escapeHtml(preview.foodCoachingCopy)}</div>
-        <div class="food-structure-hint">Anchor meals with protein and stay at a 1 most days.</div>
+        <div class="food-structure-hint">Think structure, portions, satiety, and stacking.</div>
         <label class="quick-field quick-notes">
           <span>Nutrition note</span>
           <input id="meal-behavior-note" type="text" maxlength="120" value="${escapeHtml(entry.mealBehaviorNote || "")}" placeholder="What helped food go well today?">
@@ -4399,8 +4431,9 @@ function renderTodayCard(summary) {
             <div class="today-meals">
               <div class="today-meals-header">
                 <span>Meal Structure</span>
-                <span class="today-meals-hint">1-2 is strong. 3 is drift. 4-5 is overeating.</span>
+                <span class="today-meals-hint">1-2 is strong. 3 is drift. 4 is overfull. 5 is stuffed.</span>
               </div>
+              ${renderFoodScoreGuide(true)}
               <div class="meal-behavior-grid compact">
                 ${mealBehaviorItems.map((item) => {
                   const meal = mealBehavior[item.key] || {};
@@ -4414,10 +4447,11 @@ function renderTodayCard(summary) {
                         ${mealScoreOptions.map((option) => `
                           <label class="food-level-chip ${meal.score === option.value ? "active" : ""}">
                             <input type="radio" name="today-meal-score-${item.key}" value="${option.value}" ${meal.score === option.value ? "checked" : ""}>
-                            <span>${escapeHtml(option.value === 1 ? "On track" : option.value === 2 ? "Solid" : option.value === 3 ? "Drift" : option.value === 4 ? "Full" : option.value === 5 ? "Stuffed" : "N/A")}</span>
+                            <span>${escapeHtml(option.value === 1 ? "Intentional" : option.value === 2 ? "Controlled" : option.value === 3 ? "Drift" : option.value === 4 ? "Overfull" : option.value === 5 ? "Stuffed" : "N/A")}</span>
                           </label>
                         `).join("")}
                       </div>
+                      <div class="strength-exercise-meta">${escapeHtml(mealScoreOptions.find((option) => option.value === meal.score)?.reminder || "Rate this by structure, portions, stacking, and how it felt afterward.")}</div>
                       <div class="meal-flag-row">
                         <label class="checkbox-row compact"><input id="today-meal-confidence-${item.key}" type="checkbox" ${meal.confidence ? "checked" : ""}> In control</label>
                         <label class="checkbox-row compact"><input id="today-meal-protein-${item.key}" type="checkbox" ${meal.protein ? "checked" : ""}> Protein anchor</label>
