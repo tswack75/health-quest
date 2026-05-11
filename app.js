@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.16.1";
+const APP_VERSION = "v4.16.3";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -1502,7 +1502,14 @@ function migrateStrengthSession(session, strengthPlan = defaultStrengthPlan) {
       const priorExercises = new Map((prior.exercises || []).map((exercise) => [exercise.name, exercise]));
       return {
         id: finisher.id,
-        completed: Boolean(prior.completed),
+        completed: Boolean(
+          (prior.exercises || []).some((exercise) =>
+            exercise.weight ||
+            exercise.repsCompleted ||
+            Number(exercise.setsCompleted || 0) > 0 ||
+            exercise.actualSets?.some((set) => set.weight || set.reps)
+          )
+        ),
         exercises: finisher.exercises.map((exercise) => {
           const previousExercise = priorExercises.get(exercise.name) || {};
           const priorActualSets = Array.isArray(previousExercise.actualSets) ? previousExercise.actualSets : [];
@@ -3642,9 +3649,50 @@ function formatCompletedExerciseSetSummary(exerciseName, actualSets = []) {
   return `${populatedSets.length} sets: ${pieces.join(" | ")}`;
 }
 
+function formatStrengthLogSetSummary(exerciseName, sets = [], resistanceLevel = "") {
+  const exerciseType = inferStrengthExerciseType(exerciseName, "weighted");
+  const populatedSets = (sets || []).filter((set) => set.weight || set.reps || set.seconds);
+  if (!populatedSets.length) {
+    return "";
+  }
+  const pieces = populatedSets.map((set) => {
+    if (set.weight) {
+      return `${set.weight} x ${set.reps || "--"}`;
+    }
+    if (exerciseType === "timed") {
+      return `${set.seconds || "--"} sec`;
+    }
+    const repsText = `${set.reps || "--"} reps`;
+    return resistanceLevel ? `${repsText} (${resistanceLevel})` : repsText;
+  });
+  return `${populatedSets.length} sets: ${pieces.join(" | ")}`;
+}
+
 function getLastFinisherPerformance(finisherId, name) {
   for (let index = state.strengthHistory.length - 1; index >= 0; index -= 1) {
     const session = state.strengthHistory[index];
+    const finisher = session.optionalFinishers?.find((item) => item.id === finisherId);
+    const exercise = finisher?.exercises?.find((item) =>
+      item.name === name && (
+        item.weight ||
+        item.repsCompleted ||
+        Number(item.setsCompleted || 0) > 0 ||
+        item.actualSets?.some((set) => set.weight || set.reps)
+      )
+    );
+    if (exercise) {
+      return { session, finisher, exercise };
+    }
+  }
+  return null;
+}
+
+function getLastCompletedFinisherPerformance(finisherId, name) {
+  for (let index = state.strengthHistory.length - 1; index >= 0; index -= 1) {
+    const session = state.strengthHistory[index];
+    if (!session?.completed) {
+      continue;
+    }
     const finisher = session.optionalFinishers?.find((item) => item.id === finisherId);
     const exercise = finisher?.exercises?.find((item) =>
       item.name === name && (
@@ -4770,7 +4818,7 @@ function renderStrengthCard(summary) {
                 ${alternateEntry ? `<span class="strength-exercise-meta">Alternative available: ${escapeHtml(alternateEntry.name)}</span>` : ""}
               </div>
               ${lastCompleted
-                ? `<div class="strength-exercise-meta">Last complete workout: ${escapeHtml(lastCompletedSummary || "--")}${lastCompleted.exercise.increaseNextTime ? " • Marked to increase" : ""}</div>`
+                ? `<div class="strength-exercise-meta">Last complete workout (${escapeHtml(formatDisplayDate(lastCompleted.session.date))}): ${escapeHtml(lastCompletedSummary || "--")}${lastCompleted.exercise.increaseNextTime ? " • Marked to increase" : ""}</div>`
                 : `<div class="strength-exercise-meta">Last complete workout: --</div>`}
               ${!last ? `<div class="strength-starting-meta">${escapeHtml(starter.summaryText)}</div>` : ""}
               ${!last && helpEntry?.backSensitivityNote ? `<div class="strength-safety-note">${escapeHtml(helpEntry.backSensitivityNote)}</div>` : ""}
@@ -4813,19 +4861,20 @@ function renderStrengthCard(summary) {
               </label>
               <div class="finisher-exercise-list">
                 ${(sessionFinisher?.exercises || []).map((exercise, exerciseIndex) => {
-                  const lastFinisher = getLastFinisherPerformance(finisher.id, exercise.name);
+                  const lastCompletedFinisher = getLastCompletedFinisherPerformance(finisher.id, exercise.name);
                   const pendingIncrease = getPendingFinisherIncreaseReminder(finisher.id, exercise.name, dateKey);
-                  const lastWeight = lastFinisher?.exercise?.weight || lastFinisher?.exercise?.actualSets?.find((set) => set.weight)?.weight || "";
-                  const lastSets = lastFinisher?.exercise?.setsCompleted || lastFinisher?.exercise?.actualSets?.filter((set) => set.completed || set.weight || set.reps).length || "";
-                  const lastReps = lastFinisher?.exercise?.repsCompleted || lastFinisher?.exercise?.actualSets?.find((set) => set.reps)?.reps || "";
-                  const lastSummary = [lastWeight ? `${lastWeight}` : "", lastSets ? `${lastSets} sets` : "", lastReps ? `${lastReps} reps` : ""].filter(Boolean).join(" / ");
+                  const lastCompletedSummary = lastCompletedFinisher
+                    ? formatCompletedExerciseSetSummary(exercise.name, lastCompletedFinisher.exercise.actualSets || [])
+                    : "";
                   return `
                   <div class="finisher-exercise">
                     <div class="finisher-exercise-top">
                       <div class="strength-exercise-meta"><strong>${escapeHtml(exercise.name)}</strong></div>
                       ${pendingIncrease ? `<span class="strength-flag-badge compact">Marked</span>` : ""}
                     </div>
-                    ${lastSummary ? `<div class="finisher-last-row">Last: ${escapeHtml(lastSummary)}</div>` : ""}
+                    ${lastCompletedFinisher
+                      ? `<div class="finisher-last-row">Last complete workout (${escapeHtml(formatDisplayDate(lastCompletedFinisher.session.date))}): ${escapeHtml(lastCompletedSummary || "--")}${lastCompletedFinisher.exercise.increaseNextTime ? " • Marked to increase" : ""}</div>`
+                      : ""}
                     <div class="finisher-compact-labels">
                       <span>Wt</span>
                       <span>Sets</span>
@@ -4881,19 +4930,16 @@ function renderStrengthCard(summary) {
             .filter((log) => log.source === "away_session" && normalizeExerciseKey(log.exercise) === normalizeExerciseKey(exercise.name))
             .sort((a, b) => a.date.localeCompare(b.date))
             .slice(-1)[0];
-          const lastSets = lastAwayLog?.sets?.length || 0;
-          const lastReps = lastAwayLog?.sets?.[0]?.reps ?? "";
-          const lastSeconds = lastAwayLog?.sets?.[0]?.seconds ?? "";
-          const lastSummary = isTimed
-            ? (lastSets && lastSeconds ? `${lastSets} x ${lastSeconds} sec` : "")
-            : (lastSets && lastReps ? `${lastSets} x ${lastReps}${isBand ? ` (${lastAwayLog?.resistanceLevel || "light"})` : ""}` : "");
+          const lastSummary = lastAwayLog
+            ? formatStrengthLogSetSummary(exercise.name, lastAwayLog.sets || [], isBand ? (lastAwayLog.resistanceLevel || "light") : "")
+            : "";
           return `
             <div class="away-exercise-row">
               <div class="away-exercise-top">
                 <div>
                   <div class="strength-exercise-name">${escapeHtml(exercise.name)}</div>
                   <div class="strength-exercise-meta">Target ${escapeHtml(String(exercise.sets))} x ${escapeHtml(isTimed ? (exercise.targetSeconds || "--") : (exercise.targetReps || "--"))}</div>
-                  ${lastSummary ? `<div class="strength-exercise-meta">Last away: ${escapeHtml(lastSummary)}</div>` : ""}
+                  ${lastSummary ? `<div class="strength-exercise-meta">Last away workout (${escapeHtml(formatDisplayDate(lastAwayLog.date))}): ${escapeHtml(lastSummary)}</div>` : ""}
                 </div>
                 <button type="button" class="secondary-button compact away-remove-button" data-away-remove="${exerciseIndex}">Remove</button>
               </div>
@@ -5167,11 +5213,31 @@ function handleStrengthIncreaseToggle(event) {
 function handleFinisherToggle(event) {
   const session = getEditableStrengthSession();
   const finisherId = event.target.dataset.finisherId;
-  session.optionalFinishers = (session.optionalFinishers || []).map((finisher) =>
-    finisher.id === finisherId
-      ? { ...finisher, completed: event.target.checked }
-      : finisher
-  );
+  session.optionalFinishers = (session.optionalFinishers || []).map((finisher) => {
+    if (finisher.id !== finisherId) {
+      return finisher;
+    }
+    if (event.target.checked) {
+      return { ...finisher, completed: true };
+    }
+    return {
+      ...finisher,
+      completed: false,
+      exercises: (finisher.exercises || []).map((exercise) => ({
+        ...exercise,
+        weight: "",
+        repsCompleted: "",
+        setsCompleted: 0,
+        increaseNextTime: Boolean(exercise.increaseNextTime),
+        actualSets: Array.from({ length: exercise.sets }, (_, index) => ({
+          set: index + 1,
+          weight: "",
+          reps: "",
+          completed: false,
+        })),
+      })),
+    };
+  });
   state.meta.currentStrengthSession = session;
   render();
 }
@@ -5187,6 +5253,16 @@ function handleFinisherDraftChange(event) {
     return;
   }
   exercise[field] = event.target.value;
+  exercise.completed = Boolean(
+    Number(exercise.setsCompleted || 0) > 0 ||
+    exercise.weight ||
+    exercise.repsCompleted
+  );
+  finisher.completed = (finisher.exercises || []).some((item) =>
+    Number(item.setsCompleted || 0) > 0 ||
+    item.weight ||
+    item.repsCompleted
+  );
   state.meta.currentStrengthSession = session;
 }
 
