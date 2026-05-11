@@ -1,4 +1,4 @@
-const APP_VERSION = "v4.16.0";
+const APP_VERSION = "v4.16.1";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -3610,6 +3610,38 @@ function getLastExercisePerformance(name) {
   return null;
 }
 
+function getLastCompletedExercisePerformance(name) {
+  for (let index = state.strengthHistory.length - 1; index >= 0; index -= 1) {
+    const session = state.strengthHistory[index];
+    if (!session?.completed) {
+      continue;
+    }
+    const exercise = session.exercises?.find((item) => item.name === name && item.actualSets?.some((set) => set.reps || set.weight));
+    if (exercise) {
+      return { session, exercise };
+    }
+  }
+  return null;
+}
+
+function formatCompletedExerciseSetSummary(exerciseName, actualSets = []) {
+  const exerciseType = inferStrengthExerciseType(exerciseName, "weighted");
+  const populatedSets = actualSets.filter((set) => set.weight || set.reps);
+  if (!populatedSets.length) {
+    return "";
+  }
+  const pieces = populatedSets.map((set) => {
+    if (set.weight) {
+      return `${set.weight} x ${set.reps || "--"}`;
+    }
+    if (exerciseType === "timed") {
+      return `${set.reps || "--"} sec`;
+    }
+    return `${set.reps || "--"} reps`;
+  });
+  return `${populatedSets.length} sets: ${pieces.join(" | ")}`;
+}
+
 function getLastFinisherPerformance(finisherId, name) {
   for (let index = state.strengthHistory.length - 1; index >= 0; index -= 1) {
     const session = state.strengthHistory[index];
@@ -4700,8 +4732,11 @@ function renderStrengthCard(summary) {
       ${exercises.map((exercise, exerciseIndex) => `
           ${(() => {
             const last = getLastExercisePerformance(exercise.name);
-            const lastWeight = last?.exercise?.actualSets?.find((set) => set.weight)?.weight || "";
-            const lastReps = last?.exercise?.actualSets?.map((set) => set.reps).filter(Boolean).join("/") || "";
+            const lastCompleted = getLastCompletedExercisePerformance(exercise.name);
+            const lastWeight = lastCompleted?.exercise?.actualSets?.find((set) => set.weight)?.weight || "";
+            const lastCompletedSummary = lastCompleted
+              ? formatCompletedExerciseSetSummary(exercise.name, lastCompleted.exercise.actualSets || [])
+              : "";
             const helpEntry = getExerciseHelpEntry(exercise.helpSlug || exercise.name);
             const alternateEntry = exercise.alternateHelpSlug ? getExerciseHelpEntry(exercise.alternateHelpSlug) : null;
             const starter = getExerciseStartingGuidance(exercise);
@@ -4734,7 +4769,9 @@ function renderStrengthCard(summary) {
                 <button type="button" class="secondary-button exercise-help-trigger" data-help-slug="${escapeHtml(exercise.helpSlug || exercise.name)}" ${exercise.alternateHelpSlug ? `data-help-alt="${escapeHtml(exercise.alternateHelpSlug)}"` : ""}>How to Do This</button>
                 ${alternateEntry ? `<span class="strength-exercise-meta">Alternative available: ${escapeHtml(alternateEntry.name)}</span>` : ""}
               </div>
-              <div class="strength-exercise-meta">Last: ${escapeHtml(lastWeight || "--")} ${lastReps ? `for ${escapeHtml(lastReps)}` : ""}</div>
+              ${lastCompleted
+                ? `<div class="strength-exercise-meta">Last complete workout: ${escapeHtml(lastCompletedSummary || "--")}${lastCompleted.exercise.increaseNextTime ? " • Marked to increase" : ""}</div>`
+                : `<div class="strength-exercise-meta">Last complete workout: --</div>`}
               ${!last ? `<div class="strength-starting-meta">${escapeHtml(starter.summaryText)}</div>` : ""}
               ${!last && helpEntry?.backSensitivityNote ? `<div class="strength-safety-note">${escapeHtml(helpEntry.backSensitivityNote)}</div>` : ""}
               <div class="strength-exercise-meta">${escapeHtml(getExerciseProgressionSuggestion(exercise))}</div>
