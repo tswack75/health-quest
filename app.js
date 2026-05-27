@@ -1,4 +1,5 @@
-const APP_VERSION = "v4.16.3";
+const APP_VERSION = "v4.17.0";
+const CURRENT_SCORING_VERSION = "v4.17.0";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
@@ -10,25 +11,25 @@ const mealBehaviorItems = [
     key: "breakfast",
     label: "Breakfast",
     helper: "Protein-forward and controlled when you eat it.",
-    weight: 0.2,
+    weight: 0.15,
   },
   {
     key: "lunch",
     label: "Lunch",
     helper: "Anchor the middle of the day with structure.",
-    weight: 0.3,
+    weight: 0.25,
   },
   {
     key: "dinner",
     label: "Dinner",
     helper: "Stay in control late when drift usually shows up.",
-    weight: 0.35,
+    weight: 0.4,
   },
   {
     key: "snacks",
     label: "Snacks",
     helper: "Keep snacks deliberate instead of reactive.",
-    weight: 0.15,
+    weight: 0.2,
   },
 ];
 // Food score guide text lives here so the in-app guide and the score reminders
@@ -65,9 +66,9 @@ const mealBehaviorQualityMap = {
   5: 0,
 };
 const healthWeights = {
-  nutrition: 0.4,
+  nutrition: 0.45,
   movement: 0.25,
-  strength: 0.2,
+  strength: 0.15,
   consistency: 0.15,
 };
 const xpRules = {
@@ -118,6 +119,7 @@ const strengthExerciseDefinitions = [
   { name: "Bench Press", type: "weighted", primary: "Chest", secondary: ["Shoulders", "Arms"] },
   { name: "Dumbbell Press", type: "weighted", primary: "Chest", secondary: ["Shoulders", "Arms"] },
   { name: "Dumbbell Bench Press", type: "weighted", primary: "Chest", secondary: ["Shoulders", "Arms"] },
+  { name: "Dumbbell Bench Press / Incline Push-Ups", type: "weighted", primary: "Chest", secondary: ["Shoulders", "Arms"] },
   { name: "Shoulder Press", type: "weighted", primary: "Shoulders", secondary: ["Arms"] },
   { name: "Light Dumbbell Shoulder Press", type: "weighted", primary: "Shoulders", secondary: ["Arms"] },
   { name: "Row", type: "weighted", primary: "Back", secondary: ["Arms"] },
@@ -141,6 +143,7 @@ const strengthExerciseDefinitions = [
   { name: "Lunges", type: "bodyweight", primary: "Legs", secondary: ["Core"] },
   { name: "Step-ups", type: "bodyweight", primary: "Legs", secondary: ["Core"] },
   { name: "Plank", type: "timed", primary: "Core", secondary: [] },
+  { name: "Plank / Dead Bug", type: "timed", primary: "Core", secondary: [] },
   { name: "Side Plank", type: "timed", primary: "Core", secondary: ["Shoulders"] },
   { name: "Dead Bug", type: "bodyweight", primary: "Core", secondary: [] },
   { name: "Dead Bugs", type: "bodyweight", primary: "Core", secondary: [] },
@@ -860,6 +863,7 @@ function createEmptyState() {
     entries: {},
     rewards: [],
     meta: {
+      currentScoringVersion: CURRENT_SCORING_VERSION,
       lastExportAt: null,
       lowestAvgWeightRewarded: null,
       bestSevenDayAvgWeight: null,
@@ -962,6 +966,7 @@ function migrateState(parsed, sourceKey) {
     : [];
 
   const meta = {
+    currentScoringVersion: parsed.meta?.currentScoringVersion || CURRENT_SCORING_VERSION,
     lastExportAt: parsed.meta?.lastExportAt || parsed.lastExportAt || null,
     lowestAvgWeightRewarded: parsed.meta?.lowestAvgWeightRewarded ?? null,
     bestSevenDayAvgWeight: parsed.meta?.bestSevenDayAvgWeight ?? parsed.meta?.lowestAvgWeightRewarded ?? null,
@@ -1394,7 +1399,7 @@ function migrateEntry(dateKey, rawEntry, sourceVersion = 4) {
   const migratedFoodStructure = createEmptyFoodStructure();
   const sourceFoodStructure = rawEntry?.foodStructure || rawEntry?.foodChecks || rawEntry?.structuredFood || {};
   for (const item of foodStructureItems) {
-    migratedFoodStructure[item.key] = Boolean(sourceFoodStructure?.[item.key]);
+    migratedFoodStructure[item.key] = normalizeFoodStructureLevel(sourceFoodStructure?.[item.key]);
   }
   const sourceHabits = rawEntry?.habits || {};
   const hasStructuredFood = Boolean(rawEntry?.foodModel === "structure-v1" || rawEntry?.foodStructure || rawEntry?.foodChecks || rawEntry?.structuredFood);
@@ -1412,6 +1417,7 @@ function migrateEntry(dateKey, rawEntry, sourceVersion = 4) {
 
   return {
     date: entryDate,
+    scoringModelVersion: rawEntry?.scoringModelVersion || null,
     mode: rawEntry?.mode || rawEntry?.loggingMode || "full",
     steps: Number(rawEntry?.steps ?? rawEntry?.stepCount ?? rawEntry?.stepTotal) || 0,
     exerciseMinutes: Number(rawEntry?.exerciseMinutes ?? rawEntry?.exercise ?? rawEntry?.exerciseMins ?? rawEntry?.exerciseMinutesTotal) || 0,
@@ -1589,6 +1595,10 @@ function normalizeFoodValue(value, sourceVersion = 4) {
 
 function saveState() {
   try {
+    state.meta = {
+      ...(state.meta || {}),
+      currentScoringVersion: CURRENT_SCORING_VERSION,
+    };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     return true;
   } catch (error) {
@@ -1808,6 +1818,7 @@ function saveDailyEntry() {
   const alcohol = document.getElementById("today-alcohol")?.value || existing.alcohol || "none";
   state.entries[dateKey] = {
     date: dateKey,
+    scoringModelVersion: CURRENT_SCORING_VERSION,
     mode: "full",
     steps: clampNumber(entryStepsInput.value, 0, 100000, 0),
     exerciseMinutes: clampNumber(entryExerciseInput.value, 0, 300, 0),
@@ -1844,7 +1855,7 @@ function saveDailyEntry() {
   renderFoodLog();
   render();
   flashSaveEntryConfirmation();
-  const savedEntry = getEntry(dateKey);
+  const savedEntry = computeSummary().today;
   const foodSummary = savedEntry.foodModel === "meal-v2"
     ? ` Nutrition ${formatMaybe(savedEntry.nutritionScore, 0)} saved.`
     : savedEntry.foodModel === "structure-v1"
@@ -1961,11 +1972,11 @@ function getMealBehaviorQuality(meal = {}) {
   let adjusted = base;
   if (meal.confidence) {
     adjusted += 6;
-  } else {
+  } else if (meal.confidence === false) {
     adjusted -= 12;
   }
   if (meal.protein) {
-    adjusted += 6;
+    adjusted += 8;
   }
   return clampNumber(adjusted, 0, 100, 0);
 }
@@ -1975,6 +1986,127 @@ function getMealBehaviorPerformanceScale(nutritionScore) {
     return null;
   }
   return Number(((nutritionScore / 100) * 5).toFixed(1));
+}
+
+function createNeutralMealBehavior() {
+  return Object.fromEntries(mealBehaviorItems.map((item) => [item.key, {
+    score: null,
+    confidence: null,
+    protein: null,
+  }]));
+}
+
+function getWorstDefinedFoodScore(values = []) {
+  const usable = values
+    .map((value) => normalizeFoodValue(value))
+    .filter((value) => value != null);
+  return usable.length ? Math.max(...usable) : null;
+}
+
+function normalizeLegacyMealToBehavior(score) {
+  const normalizedScore = normalizeFoodValue(score);
+  if (normalizedScore == null) {
+    return { score: null, confidence: null, protein: null };
+  }
+  return {
+    score: normalizedScore,
+    confidence: null,
+    protein: null,
+  };
+}
+
+function mapStructureLevelToMealScore(value, itemKey) {
+  const normalized = normalizeFoodStructureLevel(value);
+  if (normalized == null) {
+    return null;
+  }
+  if (normalized === "strong") {
+    return 1;
+  }
+  if (normalized === "okay") {
+    return 2;
+  }
+  if (normalized === "drift") {
+    return 3;
+  }
+  if (itemKey === "dinnerPortionControlled" || itemKey === "noNightEating") {
+    return 4;
+  }
+  return 4;
+}
+
+function normalizeStructureFoodToMealBehavior(foodStructure = createEmptyFoodStructure()) {
+  const normalized = createNeutralMealBehavior();
+  normalized.breakfast = {
+    score: mapStructureLevelToMealScore(foodStructure.breakfastControlled, "breakfastControlled"),
+    confidence: null,
+    protein: null,
+  };
+  normalized.lunch = {
+    score: mapStructureLevelToMealScore(foodStructure.lunchAnchorMeal, "lunchAnchorMeal"),
+    confidence: null,
+    protein: null,
+  };
+  normalized.dinner = {
+    score: mapStructureLevelToMealScore(foodStructure.dinnerPortionControlled, "dinnerPortionControlled"),
+    confidence: null,
+    protein: null,
+  };
+  const snackCandidates = [
+    mapStructureLevelToMealScore(foodStructure.afternoonSnackControlled, "afternoonSnackControlled"),
+    mapStructureLevelToMealScore(foodStructure.noNightEating, "noNightEating"),
+  ].filter((score) => score != null);
+  normalized.snacks = {
+    score: snackCandidates.length ? Math.max(...snackCandidates) : null,
+    confidence: null,
+    protein: null,
+  };
+  return normalized;
+}
+
+function normalizeLegacyFoodToMealBehavior(food = createEmptyFoodEntry()) {
+  const normalized = createNeutralMealBehavior();
+  normalized.breakfast = normalizeLegacyMealToBehavior(food.morning);
+  normalized.lunch = normalizeLegacyMealToBehavior(food.lunch);
+  normalized.dinner = normalizeLegacyMealToBehavior(food.dinner);
+  normalized.snacks = normalizeLegacyMealToBehavior(getWorstDefinedFoodScore([food.afternoon, food.other]));
+  return normalized;
+}
+
+function normalizeMealBehaviorForScoring(entry) {
+  if ((entry.foodModel || "") === "meal-v2") {
+    return Object.fromEntries(mealBehaviorItems.map((item) => {
+      const meal = entry.mealBehavior?.[item.key] || {};
+      return [item.key, {
+        score: meal.score == null ? null : normalizeFoodValue(meal.score),
+        confidence: meal.confidence === true ? true : meal.confidence === false ? false : null,
+        protein: meal.protein === true ? true : meal.protein === false ? false : null,
+      }];
+    }));
+  }
+  if ((entry.foodModel || "") === "structure-v1") {
+    return normalizeStructureFoodToMealBehavior(entry.foodStructure);
+  }
+  return normalizeLegacyFoodToMealBehavior(entry.food);
+}
+
+// Raw saved entries stay untouched. This helper translates each historical entry
+// into the current scoring vocabulary at render/export time so trends can be
+// compared fairly without rewriting local storage.
+function normalizeEntryForScoring(entry) {
+  const normalizedMealBehavior = normalizeMealBehaviorForScoring(entry);
+  const normalizedSourceModel = entry.foodModel || "legacy";
+  const rawLegacyFoodAverage = normalizedSourceModel === "legacy" ? getLegacyFoodAverage(entry) : null;
+  const normalizedEntry = {
+    ...entry,
+    scoringModelVersion: CURRENT_SCORING_VERSION,
+    normalizedSourceModel,
+    normalizedMealBehavior,
+    normalizedFoodModel: "meal-v2",
+    normalizedLegacyFoodAverage: rawLegacyFoodAverage,
+  };
+  normalizedEntry.mealBehavior = normalizedMealBehavior;
+  return normalizedEntry;
 }
 
 function syncFoodOptionClasses() {
@@ -2022,8 +2154,11 @@ function getLegacyFoodAverage(day) {
 }
 
 function getUnifiedFoodMetric(day) {
-  if (day.foodModel === "meal-v2") {
-    return day.foodPerformanceScore ?? getMealBehaviorPerformanceScale(day.nutritionScore ?? 0);
+  if (day.foodPerformanceScore != null) {
+    return day.foodPerformanceScore;
+  }
+  if (day.nutritionScore != null) {
+    return getMealBehaviorPerformanceScale(day.nutritionScore);
   }
   if (day.foodModel === "structure-v1") {
     return day.foodStructureScore ?? getFoodStructureScore(day.foodStructure);
@@ -2290,10 +2425,17 @@ function render() {
 }
 
 function computeSummary() {
+  state.meta.currentScoringVersion = CURRENT_SCORING_VERSION;
   const orderedEntries = Object.values(state.entries)
     .map((entry) => migrateEntry(entry.date, entry))
     .sort((a, b) => a.date.localeCompare(b.date));
-  const loggedEntries = orderedEntries.map((entry, index) => scoreDay(entry, { priorEntries: orderedEntries.slice(0, index) }));
+  const normalizedEntries = orderedEntries.map((entry) => normalizeEntryForScoring(entry));
+  const loggedEntries = [];
+  const priorRuleEntries = [];
+  normalizedEntries.forEach((entry) => {
+    priorRuleEntries.push(scoreEntryV416Baseline(entry, { priorEntries: priorRuleEntries }));
+    loggedEntries.push(scoreEntryV417(entry, { priorEntries: loggedEntries }));
+  });
 
   const timelineFilled = buildFilledTimeline(loggedEntries);
   const completedTimeline = getCompletedDaysThroughYesterday(timelineFilled);
@@ -2338,8 +2480,8 @@ function computeSummary() {
     eliteStreak,
     bestRegularStreak,
     bestEliteStreak,
-    today: scoreDay(getDraftEntry(), {
-      priorEntries: orderedEntries.filter((entry) => entry.date < getSelectedDateKey()),
+    today: scoreEntryV417(normalizeEntryForScoring(getDraftEntry()), {
+      priorEntries: loggedEntries.filter((entry) => entry.date < getSelectedDateKey()),
     }),
     weekly,
     rewards,
@@ -2352,6 +2494,7 @@ function computeSummary() {
     signals: buildSignals(loggedEntries, weekly, strengthSummary),
     scorecard: buildWeeklyScorecard(loggedEntries, weekly, strengthSummary),
     progress: buildProgressSummary(loggedEntries, weekly, strengthSummary, momentum),
+    scoringAudit: buildScoringAuditRows(loggedEntries, priorRuleEntries),
   };
   const narrativeChanged = syncNarrativeProgress(summary);
   if (narrativeChanged) {
@@ -2772,6 +2915,7 @@ function getDraftEntry() {
   return {
     ...existing,
     date: dateKey,
+    scoringModelVersion: CURRENT_SCORING_VERSION,
     mode: "full",
     steps: clampNumber(entryStepsInput.value, 0, 100000, 0),
     exerciseMinutes: clampNumber(entryExerciseInput.value, 0, 300, 0),
@@ -2805,123 +2949,83 @@ function getDraftEntry() {
 }
 
 function scoreFood(entry) {
-  if (entry.foodModel === "meal-v2") {
-    const mealBehavior = JSON.parse(JSON.stringify({ ...createEmptyMealBehavior(), ...(entry.mealBehavior || {}) }));
-    const loggedMeals = mealBehaviorItems
-      .map((item) => ({
-        ...item,
-        meal: mealBehavior[item.key] || {},
-        quality: getMealBehaviorQuality(mealBehavior[item.key] || {}),
-      }))
-      .filter((item) => item.meal.score != null && item.quality != null);
-    const weightTotal = loggedMeals.reduce((sum, item) => sum + item.weight, 0);
-    const weightedAverage = weightTotal
-      ? loggedMeals.reduce((sum, item) => sum + (item.quality * item.weight), 0) / weightTotal
-      : 0;
-    const severeMeals = mealBehaviorItems.filter((item) => Number(mealBehavior[item.key]?.score) === 5).length;
-    const roughMeals = mealBehaviorItems.filter((item) => Number(mealBehavior[item.key]?.score) >= 4).length;
-    const proteinAnchors = mealBehaviorItems.filter((item) => mealBehavior[item.key]?.protein).length;
-    const alcoholPenalty = getAlcoholPenalty(entry.alcohol);
-    let nutritionScore = weightedAverage;
-    if (severeMeals) {
-      nutritionScore -= 12;
-    }
-    if (roughMeals >= 2) {
-      nutritionScore -= 10;
-    }
-    nutritionScore -= alcoholPenalty;
-    nutritionScore = clampNumber(nutritionScore, 0, 100, 0);
-    const foodPoints = Math.round((nutritionScore / 100) * scoringWeights.food.total);
-    const foodPerformanceScore = getMealBehaviorPerformanceScale(nutritionScore);
-    const allMealsLogged = mealBehaviorItems.every((item) => mealBehavior[item.key]?.score != null);
-    return {
-      foodModel: "meal-v2",
-      mealBehavior,
-      nutritionScore,
-      foodPoints,
-      foodPerformanceScore,
-      allMealsLogged,
-      proteinAnchors,
-      alcoholPenalty,
-      foodCoachingCopy: nutritionScore >= 85
-        ? "Strong nutrition day. Keep living at a 1 or 2."
-        : nutritionScore >= 70
-          ? "Mostly steady. One cleaner decision would tighten it up."
-        : nutritionScore >= 55
-            ? "There was some drift. Tighten the next meal."
-            : "The day drifted. Reset with the next decision, not with guilt.",
-      foodStructureRating: nutritionScore >= 85
-        ? "strong, controlled day"
-        : nutritionScore >= 70
-          ? "solid real-world day"
-        : nutritionScore >= 55
-            ? "noticeable drift"
-            : "reactive day",
-      foodIsProvisional: !allMealsLogged,
-      coreAnsweredCount: loggedMeals.length,
-      answeredCheckpoints: loggedMeals.length,
-    };
-  }
-
-  if (entry.foodModel === "structure-v1") {
-    const foodStructure = { ...createEmptyFoodStructure(), ...(entry.foodStructure || {}) };
-    const foodStructureScore = getFoodStructureScore(foodStructure);
-    const foodPoints = Math.round((foodStructureScore / foodStructureItems.length) * scoringWeights.food.total);
-    const answeredCheckpoints = foodStructureItems.filter((item) => normalizeFoodStructureLevel(foodStructure[item.key]) != null).length;
-    return {
-      foodModel: "structure-v1",
-      foodPoints,
-      foodStructureScore,
-      foodCoachingCopy: getFoodStructureCoaching(foodStructureScore),
-      foodStructureRating: getFoodStructureRating(foodStructureScore),
-      foodIsProvisional: answeredCheckpoints < foodStructureItems.length,
-      coreAnsweredCount: answeredCheckpoints,
-      answeredCheckpoints,
-    };
-  }
-
-  const getFoodScore = (value) => foodOptions[value]?.score ?? foodOptions[value]?.quality ?? 0;
-  const coreAnswered = coreMealSlots.filter((slot) => entry.food[slot] !== null);
-  const coreScored = coreAnswered.filter((slot) => foodOptions[entry.food[slot]]?.quality !== null);
-  const coreAverage = coreScored.length
-    ? average(coreScored.map((slot) => getFoodScore(entry.food[slot])))
+  const sourceModel = entry.normalizedSourceModel || entry.foodModel || "legacy";
+  const mealBehavior = JSON.parse(JSON.stringify(normalizeMealBehaviorForScoring(entry)));
+  const loggedMeals = mealBehaviorItems
+    .map((item) => ({
+      ...item,
+      meal: mealBehavior[item.key] || {},
+      quality: getMealBehaviorQuality(mealBehavior[item.key] || {}),
+    }))
+    .filter((item) => item.meal.score != null && item.quality != null);
+  const weightTotal = loggedMeals.reduce((sum, item) => sum + item.weight, 0);
+  let nutritionScore = weightTotal
+    ? loggedMeals.reduce((sum, item) => sum + (item.quality * item.weight), 0) / weightTotal
     : 0;
-  const coreFoodPoints = Math.round(coreAverage * scoringWeights.food.core);
-
-  const otherValue = entry.food.other;
-  let otherFoodPoints = 0;
-  if (otherValue != null && foodOptions[otherValue]?.quality !== null) {
-    otherFoodPoints = Math.round(getFoodScore(otherValue) * scoringWeights.food.other);
+  const severeMeals = mealBehaviorItems.filter((item) => Number(mealBehavior[item.key]?.score) === 5).length;
+  const roughMeals = mealBehaviorItems.filter((item) => Number(mealBehavior[item.key]?.score) >= 4).length;
+  const proteinAnchors = mealBehaviorItems.filter((item) => mealBehavior[item.key]?.protein).length;
+  const dinnerScore = Number(mealBehavior.dinner?.score);
+  const snackScore = Number(mealBehavior.snacks?.score);
+  const alcoholPenalty = getAlcoholPenalty(entry.alcohol);
+  if (severeMeals) {
+    nutritionScore -= 12;
   }
-
-  const completionBonus = coreAnswered.length >= 4
-    ? scoringWeights.food.completion
-    : coreAnswered.length >= 3
-      ? 1
-      : 0;
-
-  const dinnerDrift = (entry.food.dinner ?? -1) >= 3;
-  const otherDrift = (entry.food.other ?? -1) >= 3;
-  const driftPenalty = dinnerDrift && otherDrift ? 5 : dinnerDrift || otherDrift ? 2 : 0;
-
-  const foodPoints = Math.max(
-    0,
-    Math.min(
-      scoringWeights.food.total,
-      coreFoodPoints + otherFoodPoints + completionBonus - driftPenalty
-    )
-  );
-
+  if (roughMeals >= 2) {
+    nutritionScore -= 10;
+  }
+  if (dinnerScore >= 3) {
+    nutritionScore -= 4;
+  }
+  if (snackScore >= 3) {
+    nutritionScore -= 3;
+  }
+  if (dinnerScore >= 4) {
+    nutritionScore -= 4;
+  }
+  if (snackScore >= 4) {
+    nutritionScore -= 3;
+  }
+  if (dinnerScore >= 3 && snackScore >= 3) {
+    nutritionScore -= 4;
+  }
+  nutritionScore -= alcoholPenalty;
+  nutritionScore = clampNumber(nutritionScore, 0, 100, 0);
+  const foodPoints = Math.round((nutritionScore / 100) * scoringWeights.food.total);
+  const foodPerformanceScore = getMealBehaviorPerformanceScale(nutritionScore);
+  const allMealsLogged = mealBehaviorItems.every((item) => mealBehavior[item.key]?.score != null);
+  const answeredCheckpoints = loggedMeals.length;
+  const foodStructure = { ...createEmptyFoodStructure(), ...(entry.foodStructure || {}) };
+  const foodStructureScore = sourceModel === "structure-v1" ? getFoodStructureScore(foodStructure) : null;
   return {
-    foodModel: "legacy",
+    foodModel: sourceModel,
+    mealBehavior,
+    nutritionScore,
     foodPoints,
-    coreFoodPoints,
-    otherFoodPoints,
-    completionBonus,
-    driftPenalty,
-    coreAnsweredCount: coreAnswered.length,
-    coreAverage,
-    foodIsProvisional: coreAnswered.length < 3,
+    foodPerformanceScore,
+    allMealsLogged,
+    proteinAnchors,
+    alcoholPenalty,
+    dinnerScore: Number.isFinite(dinnerScore) ? dinnerScore : null,
+    snackScore: Number.isFinite(snackScore) ? snackScore : null,
+    foodCoachingCopy: nutritionScore >= 85
+      ? "Strong nutrition day. Keep living at a 1 or 2."
+      : nutritionScore >= 70
+        ? "Mostly steady. One cleaner decision would tighten it up."
+        : nutritionScore >= 55
+          ? "There was some drift. Tighten the next meal."
+          : "The day drifted. Reset with the next decision, not with guilt.",
+    foodStructureRating: nutritionScore >= 85
+      ? "strong, controlled day"
+      : nutritionScore >= 70
+        ? "solid real-world day"
+        : nutritionScore >= 55
+          ? "noticeable drift"
+          : "reactive day",
+    foodIsProvisional: !allMealsLogged,
+    coreAnsweredCount: answeredCheckpoints,
+    answeredCheckpoints,
+    foodStructureScore,
   };
 }
 
@@ -2980,7 +3084,20 @@ function getMovementScoreFromCalories(activeCalories) {
   if (activeCalories == null) {
     return null;
   }
-  return clampNumber(Math.round((Number(activeCalories) / 700) * 100), 0, 100, 0);
+  const calories = Math.max(0, Number(activeCalories) || 0);
+  if (calories <= 399) {
+    return Math.round((calories / 399) * 55);
+  }
+  if (calories <= 599) {
+    return Math.round(55 + (((calories - 400) / 199) * 20));
+  }
+  if (calories <= 699) {
+    return Math.round(75 + (((calories - 600) / 99) * 13));
+  }
+  if (calories <= 899) {
+    return Math.round(88 + (((calories - 700) / 199) * 8));
+  }
+  return 100;
 }
 
 function getMovementScore(entry, stepPoints, exercisePoints) {
@@ -3055,6 +3172,112 @@ function scoreBodyMetrics(entry, priorEntries = []) {
 function getStrengthDayScore(entry) {
   const session = getStrengthSessionForDate(entry.date);
   const due = isStrengthDay(entry.date);
+  if (session?.completed) {
+    return 100;
+  }
+  if (session?.awayWorkoutCompleted) {
+    return 85;
+  }
+  if (session?.unableToTrain && session?.unableReason) {
+    return 70;
+  }
+  if (session && !session.completed) {
+    return 60;
+  }
+  if (due) {
+    return 45;
+  }
+  return 75;
+}
+
+function getConsistencyScore(entry, habitPoints, food) {
+  const habitMax = Object.values(scoringWeights.habits).reduce((sum, value) => sum + value, 0);
+  const habitScore = habitMax ? (habitPoints / habitMax) * 100 : 0;
+  const loggingScore = entry.mode === "full"
+    ? (food.foodIsProvisional ? 60 : 100)
+    : 80;
+  return Math.round((habitScore * 0.7) + (loggingScore * 0.3));
+}
+
+function getMealBehaviorQualityV416(meal = {}) {
+  const base = mealBehaviorQualityMap[meal.score];
+  if (base == null) {
+    return null;
+  }
+  let adjusted = base;
+  if (meal.confidence) {
+    adjusted += 6;
+  } else if (meal.confidence === false) {
+    adjusted -= 12;
+  }
+  if (meal.protein) {
+    adjusted += 6;
+  }
+  return clampNumber(adjusted, 0, 100, 0);
+}
+
+function scoreFoodV416Baseline(entry) {
+  const mealBehavior = JSON.parse(JSON.stringify(normalizeMealBehaviorForScoring(entry)));
+  const legacyWeights = {
+    breakfast: 0.2,
+    lunch: 0.3,
+    dinner: 0.35,
+    snacks: 0.15,
+  };
+  const loggedMeals = mealBehaviorItems
+    .map((item) => ({
+      key: item.key,
+      weight: legacyWeights[item.key] ?? item.weight,
+      meal: mealBehavior[item.key] || {},
+      quality: getMealBehaviorQualityV416(mealBehavior[item.key] || {}),
+    }))
+    .filter((item) => item.meal.score != null && item.quality != null);
+  const weightTotal = loggedMeals.reduce((sum, item) => sum + item.weight, 0);
+  let nutritionScore = weightTotal
+    ? loggedMeals.reduce((sum, item) => sum + (item.quality * item.weight), 0) / weightTotal
+    : 0;
+  const severeMeals = mealBehaviorItems.filter((item) => Number(mealBehavior[item.key]?.score) === 5).length;
+  const roughMeals = mealBehaviorItems.filter((item) => Number(mealBehavior[item.key]?.score) >= 4).length;
+  if (severeMeals) {
+    nutritionScore -= 12;
+  }
+  if (roughMeals >= 2) {
+    nutritionScore -= 10;
+  }
+  nutritionScore -= getAlcoholPenalty(entry.alcohol);
+  nutritionScore = clampNumber(nutritionScore, 0, 100, 0);
+  return {
+    nutritionScore,
+    foodPoints: Math.round((nutritionScore / 100) * scoringWeights.food.total),
+  };
+}
+
+function getMovementScoreFromCaloriesV416(activeCalories) {
+  if (activeCalories == null) {
+    return null;
+  }
+  return clampNumber(Math.round((Number(activeCalories) / 700) * 100), 0, 100, 0);
+}
+
+function getMovementScoreV416(entry, stepPoints, exercisePoints) {
+  const calorieScore = getMovementScoreFromCaloriesV416(entry.activeCalories);
+  if (calorieScore != null) {
+    return calorieScore;
+  }
+  if (entry.habits?.movement === true) {
+    return 100;
+  }
+  if (entry.habits?.movement === false && !(entry.steps || 0) && !(entry.exerciseMinutes || 0)) {
+    return 35;
+  }
+  const stepNormalized = scoringWeights.steps ? (stepPoints / scoringWeights.steps) * 100 : 0;
+  const exerciseNormalized = scoringWeights.exercise ? (exercisePoints / scoringWeights.exercise) * 100 : 0;
+  return Math.round((stepNormalized * 0.55) + (exerciseNormalized * 0.45));
+}
+
+function getStrengthDayScoreV416(entry) {
+  const session = getStrengthSessionForDate(entry.date);
+  const due = isStrengthDay(entry.date);
   if (session?.unableToTrain) {
     return 70;
   }
@@ -3073,16 +3296,40 @@ function getStrengthDayScore(entry) {
   return 70;
 }
 
-function getConsistencyScore(entry, habitPoints, food) {
-  const habitMax = Object.values(scoringWeights.habits).reduce((sum, value) => sum + value, 0);
-  const habitScore = habitMax ? (habitPoints / habitMax) * 100 : 0;
-  const loggingScore = entry.mode === "full"
-    ? (food.foodIsProvisional ? 60 : 100)
-    : 80;
-  return Math.round((habitScore * 0.7) + (loggingScore * 0.3));
+function scoreEntryV416Baseline(normalizedEntry, context = {}) {
+  const entry = normalizedEntry;
+  const dayMode = entry.mode || "full";
+  const priorEntries = context.priorEntries || [];
+  const stepPoints = Math.round(Math.min(1, (entry.steps || 0) / state.settings.stepGoal) * scoringWeights.steps);
+  const exercisePoints = Math.round(Math.min(1, (entry.exerciseMinutes || 0) / state.settings.exerciseGoal) * scoringWeights.exercise);
+  const food = scoreFoodV416Baseline(entry);
+  const habitPoints = scoreHabits(entry);
+  const bodyMetrics = scoreBodyMetrics(entry, priorEntries);
+  const movementScore = getMovementScoreV416(entry, stepPoints, exercisePoints);
+  const nutritionScore = dayMode === "full" ? food.nutritionScore : 0;
+  const strengthScore = getStrengthDayScoreV416(entry);
+  const consistencyScore = getConsistencyScore(entry, habitPoints, { foodIsProvisional: false });
+  const dailyHealthScore = Math.round(
+    (nutritionScore * 0.4) +
+    (movementScore * 0.25) +
+    (strengthScore * 0.2) +
+    (consistencyScore * 0.15)
+  );
+  const totalScore = dayMode === "full" ? dailyHealthScore : Math.round((movementScore * 0.6) + (consistencyScore * 0.4));
+  return {
+    ...entry,
+    nutritionScore,
+    movementScore,
+    strengthScore,
+    consistencyScore,
+    dailyHealthScore,
+    totalScore,
+    bodyMetricPoints: bodyMetrics.bodyMetricPoints,
+  };
 }
 
-function scoreDay(entry, context = {}) {
+function scoreEntryV417(normalizedEntry, context = {}) {
+  const entry = normalizedEntry;
   const dayMode = entry.mode || "full";
   const priorEntries = context.priorEntries || [];
   const stepPoints = Math.round(Math.min(1, (entry.steps || 0) / state.settings.stepGoal) * scoringWeights.steps);
@@ -3093,7 +3340,7 @@ function scoreDay(entry, context = {}) {
   const movementScore = getMovementScore(entry, stepPoints, exercisePoints);
   const movementLabel = getMovementLabel(entry.activeCalories, entry.activeCalories == null ? entry.habits?.movement : null, entry);
   const nutritionScore = dayMode === "full"
-    ? (entry.foodModel === "meal-v2" ? food.nutritionScore : Math.round((food.foodPoints / Math.max(1, scoringWeights.food.total)) * 100))
+    ? food.nutritionScore
     : 0;
   const strengthScore = getStrengthDayScore(entry);
   const consistencyScore = getConsistencyScore(entry, habitPoints, food);
@@ -3115,6 +3362,7 @@ function scoreDay(entry, context = {}) {
 
   return {
     ...entry,
+    scoringModelVersion: CURRENT_SCORING_VERSION,
     mode: dayMode,
     stepPoints,
     exercisePoints,
@@ -3138,6 +3386,10 @@ function scoreDay(entry, context = {}) {
     ...food,
     ...bodyMetrics,
   };
+}
+
+function scoreDay(entry, context = {}) {
+  return scoreEntryV417(normalizeEntryForScoring(entry), context);
 }
 
 function getGoalBonus(entry, food) {
@@ -3290,6 +3542,29 @@ function getNextDayWeightPairs(loggedEntries, metricKey) {
   return pairs;
 }
 
+function getNextRecordedWeightPairs(loggedEntries, featureGetter, dayFilter = () => true) {
+  const pairs = [];
+  for (let index = 0; index < loggedEntries.length; index += 1) {
+    const current = loggedEntries[index];
+    if (!dayFilter(current)) {
+      continue;
+    }
+    const feature = featureGetter(current);
+    if (feature == null || current.weight == null) {
+      continue;
+    }
+    const next = loggedEntries.slice(index + 1).find((day) => day.weight != null);
+    if (!next) {
+      continue;
+    }
+    pairs.push({
+      feature,
+      nextDayWeightChange: next.weight - current.weight,
+    });
+  }
+  return pairs;
+}
+
 function pearsonCorrelation(xValues, yValues) {
   if (xValues.length !== yValues.length || xValues.length < 2) {
     return null;
@@ -3317,50 +3592,77 @@ function pearsonCorrelation(xValues, yValues) {
 }
 
 function buildCorrelationInsight(loggedEntries) {
-  const recentEntries = loggedEntries.slice(-30);
+  const recentEntries = loggedEntries.slice(-60);
+  const usableMealV2Days = recentEntries.filter((day) => day.normalizedSourceModel === "meal-v2");
+  if (usableMealV2Days.length < 14) {
+    return null;
+  }
   const metrics = [
-    { key: "activeCalories", label: "active calories" },
-    { key: "exerciseMinutes", label: "exercise" },
-    { key: "nutritionScore", label: "food control" },
-    { key: "dailyHealthScore", label: "health score" },
+    { label: "nutrition score", betterDirection: "higher_better", getter: (day) => day.nutritionScore },
+    { label: "dinner control", betterDirection: "lower_better", getter: (day) => day.dinnerScore },
+    { label: "snack control", betterDirection: "lower_better", getter: (day) => day.snackScore },
+    { label: "active calories", betterDirection: "higher_better", getter: (day) => day.activeCalories },
+    { label: "exercise minutes", betterDirection: "higher_better", getter: (day) => day.exerciseMinutes },
+    { label: "total score", betterDirection: "higher_better", getter: (day) => day.totalScore },
   ];
 
   const ranked = metrics.map((metric) => {
-    const pairs = getNextDayWeightPairs(recentEntries, metric.key);
+    const pairs = getNextRecordedWeightPairs(
+      recentEntries,
+      metric.getter,
+      (day) => day.normalizedSourceModel === "meal-v2"
+    );
     const correlation = pearsonCorrelation(
       pairs.map((pair) => pair.feature),
       pairs.map((pair) => pair.nextDayWeightChange)
     );
+    const helpfulness = correlation == null
+      ? null
+      : metric.betterDirection === "higher_better"
+        ? -correlation
+        : correlation;
     return {
       ...metric,
       usablePairs: pairs.length,
       correlation,
-      helpfulness: correlation == null ? null : -correlation,
+      helpfulness,
     };
-  }).filter((metric) => metric.correlation != null && metric.usablePairs >= 8);
+  }).filter((metric) => metric.correlation != null && metric.usablePairs >= 14);
 
-  if (ranked.length < 2) {
+  if (!ranked.length) {
     return null;
   }
 
-  const strongScoreDays = recentEntries.filter((day) => (day.dailyHealthScore ?? day.totalScore) >= 75 && day.weight != null);
-  const lighterStrongDays = strongScoreDays.filter((day, index, array) => {
-    if (!index) {
-      return false;
-    }
-    return day.weight <= array[index - 1].weight;
-  }).length;
-
-  const top = [...ranked].sort((a, b) => (b.helpfulness ?? -Infinity) - (a.helpfulness ?? -Infinity)).slice(0, 2);
-  if ((top[0]?.helpfulness ?? -Infinity) <= 0) {
+  const top = [...ranked].sort((a, b) => (b.helpfulness ?? -Infinity) - (a.helpfulness ?? -Infinity));
+  const strongest = top[0];
+  const second = top[1];
+  if ((strongest?.helpfulness ?? -Infinity) <= 0.08) {
     return {
-      title: "What seems to help",
-      body: "Your recent data is still mixed. No single lever has separated itself clearly yet, so keep watching exercise, steps, food score, and total score together.",
+      title: "Trend Driver",
+      body: "Recent signal: the pattern is still mixed. Keep logging food, movement, and weigh-ins long enough for a clearer lever to separate itself.",
+    };
+  }
+  if (strongest.label === "dinner control") {
+    return {
+      title: "Trend Driver",
+      body: "Recent signal: dinner control appears to be your strongest lever.",
+    };
+  }
+  if (strongest.label === "snack control") {
+    return {
+      title: "Trend Driver",
+      body: "Recent signal: snack control is showing up as a meaningful lever right now.",
+    };
+  }
+  if (strongest.label === "nutrition score" && second?.label === "active calories" && (second.helpfulness ?? 0) > 0.04) {
+    return {
+      title: "Trend Driver",
+      body: "Recent signal: movement is helping, but food control is currently the sharper lever.",
     };
   }
   return {
-    title: "What seems to help",
-    body: `${lighterStrongDays >= 3 ? "Your weight tends to cooperate more when your 7-day health score stays above the mid-70s. " : ""}In your recent data, ${top.map((item) => item.label).join(" and ")} have shown the strongest relationship with better next-day scale movement.`,
+    title: "Trend Driver",
+    body: `Recent signal: ${strongest.label} is showing the clearest directional relationship with better near-term weigh-ins.`,
   };
 }
 
@@ -3429,6 +3731,7 @@ function computeWeeklyMetrics(loggedEntries) {
     avgStepsLogged: getMetricAverage(recentLoggedDays, "steps"),
     avgExerciseLogged: getMetricAverage(recentLoggedDays, "exerciseMinutes"),
     avgFoodPointsLogged: getMetricAverage(recentLoggedDays.filter((day) => day.mode === "full"), "foodPoints"),
+    avgNutritionScoreLogged: getMetricAverage(recentLoggedDays.filter((day) => day.mode === "full"), "nutritionScore"),
     alcoholDaysLogged: recentAlcoholDays.length,
     correlationInsight: buildCorrelationInsight(loggedEntries),
   };
@@ -3631,20 +3934,21 @@ function getLastCompletedExercisePerformance(name) {
   return null;
 }
 
-function formatCompletedExerciseSetSummary(exerciseName, actualSets = []) {
+function formatCompletedExerciseSetSummary(exerciseName, actualSets = [], fallbackTarget = "") {
   const exerciseType = inferStrengthExerciseType(exerciseName, "weighted");
   const populatedSets = actualSets.filter((set) => set.weight || set.reps);
   if (!populatedSets.length) {
     return "";
   }
   const pieces = populatedSets.map((set) => {
+    const repValue = set.reps || fallbackTarget || "--";
     if (set.weight) {
-      return `${set.weight} x ${set.reps || "--"}`;
+      return `${set.weight} x ${repValue}`;
     }
     if (exerciseType === "timed") {
-      return `${set.reps || "--"} sec`;
+      return `${repValue} sec`;
     }
-    return `${set.reps || "--"} reps`;
+    return `${repValue} reps`;
   });
   return `${populatedSets.length} sets: ${pieces.join(" | ")}`;
 }
@@ -4389,25 +4693,27 @@ function renderExerciseDemoMedia(entry) {
 }
 
 function getTodayBreakdownNote(day) {
-  if (shouldHideCurrentDayScore(day)) {
-    return "Today's score is still accumulating. It stays out of the trend line until the day is complete.";
+  if ((day.dinnerScore ?? 0) >= 3 || (day.snackScore ?? 0) >= 3) {
+    return "Evening drift is the main leak today.";
+  }
+  if ((day.activeCalories ?? 0) >= 700 && (day.activeCalories ?? 0) <= 899) {
+    return "Target hit. Extra movement still helps, but the bigger lever may be food control.";
+  }
+  if (isStrengthDay(day.date) && getStrengthStatus(day.date) === "due" && (day.nutritionScore ?? 0) >= 70 && (day.movementScore ?? 0) >= 75) {
+    return "Missed lift noted, but the day is still structurally strong. Reschedule rather than spiral.";
   }
   if (day.foodIsProvisional) {
     return "Some of today's score is still provisional because the day is not fully logged.";
   }
-
   const movementGap = 100 - (day.movementScore ?? 0);
-  const foodGap = day.mode === "full" ? scoringWeights.food.total - day.foodPoints : -Infinity;
-
-  if (foodGap > movementGap && foodGap >= 8) {
-    return "Food quality / control is the biggest drag on today's score.";
+  const nutritionGap = 100 - (day.nutritionScore ?? 0);
+  if (nutritionGap > movementGap && nutritionGap >= 15) {
+    return "Food control is currently the sharper lever.";
   }
-
   if (movementGap >= 25) {
-    return "Today's score ceiling is being limited mostly by movement.";
+    return "Movement volume is the main thing still holding the score back.";
   }
-
-  return "Today's score is being carried by steady reps more than by measurement alone.";
+  return "The day looks structurally solid so far.";
 }
 
 function shouldHideCurrentDayScore(day) {
@@ -4423,6 +4729,15 @@ function renderTodayCard(summary) {
   const mealBehaviorPreview = scoreFood({ ...today, foodModel: "meal-v2", mealBehavior });
   const structuredFood = readFoodStructureForm(today.foodStructure);
   const structuredPreview = scoreFood({ ...today, foodModel: "structure-v1", foodStructure: structuredFood });
+  const todayPreview = scoreEntryV417(
+    normalizeEntryForScoring({
+      ...today,
+      foodModel: showingMealBehavior ? "meal-v2" : showingStructuredFood ? "structure-v1" : today.foodModel,
+      mealBehavior,
+      foodStructure: structuredFood,
+    }),
+    { priorEntries: [] }
+  );
   const strengthAction = getStrengthPrimaryAction(summary);
   const strengthStatusLabel = summary.strength.status === "due"
     ? "Due"
@@ -4543,6 +4858,7 @@ function renderTodayCard(summary) {
               <div class="food-structure-summary compact">
                 <div class="food-structure-score">Nutrition Score: ${formatMaybe(mealBehaviorPreview.nutritionScore, 0)}</div>
                 <div class="food-structure-hint">Movement: ${escapeHtml(today.movementLabel || getMovementLabel(today.activeCalories, today.habits?.movement, today))}${today.activeCalories != null ? ` (${today.activeCalories} cal)` : ""}</div>
+                <div class="food-structure-hint">${escapeHtml(getTodayBreakdownNote(todayPreview))}</div>
               </div>
               <label class="quick-field quick-notes">
                 <span>Food note</span>
@@ -4695,7 +5011,7 @@ function renderWeeklySummary(summary) {
     statCard("14-day Body Fat Avg", `${getTrendArrow(summary.weekly.rolling14DayBodyFatAvg, summary.weekly.prior14DayBodyFatAvg)} ${formatMaybe(summary.weekly.rolling14DayBodyFatAvg, 1, "%")}`, `Goal: ${state.settings.bodyFatGoal}%`),
     statCard("7-day Active Calories", formatMaybe(summary.weekly.avgActiveCalories, 0), "Move calories, averaged across recent logged days"),
     statCard("7-day Avg Exercise", formatMaybe(summary.weekly.avgExerciseLogged), `Goal: ${state.settings.exerciseGoal} min`),
-    statCard("7-day Avg Nutrition", formatMaybe(summary.weekly.avgFoodPointsLogged), `Target: ${scoringWeights.food.total}`),
+    statCard("7-day Nutrition", formatMaybe(summary.weekly.avgNutritionScoreLogged, 0), "Average nutrition score on recent full days"),
     statCard("Alcohol Days", `${summary.weekly.alcoholDaysLogged}/7`, "Recent days with drinks logged"),
   ];
 
@@ -4714,7 +5030,7 @@ function renderWeeklySummary(summary) {
   if (summary.weekly.latestHealth7 != null && summary.weekly.latestHealth7 >= 75) {
     guardrailMarkup.push(`<div class="guardrail-item">You are trending in the right direction. Recent health scores are holding above the steady threshold.</div>`);
   }
-  guardrailMarkup.push(`<div class="guardrail-item">Food scoring updated to structured model on April 6, 2026. Legacy food scores remain preserved in history.</div>`);
+  guardrailMarkup.push(`<div class="guardrail-item">Historical scores are being normalized with current scoring. Raw entries remain unchanged.</div>`);
   guardrailList.innerHTML = guardrailMarkup.join("");
 }
 
@@ -4783,7 +5099,11 @@ function renderStrengthCard(summary) {
             const lastCompleted = getLastCompletedExercisePerformance(exercise.name);
             const lastWeight = lastCompleted?.exercise?.actualSets?.find((set) => set.weight)?.weight || "";
             const lastCompletedSummary = lastCompleted
-              ? formatCompletedExerciseSetSummary(exercise.name, lastCompleted.exercise.actualSets || [])
+              ? formatCompletedExerciseSetSummary(
+                  exercise.name,
+                  lastCompleted.exercise.actualSets || [],
+                  lastCompleted.exercise.targetReps || exercise.targetReps || exercise.reps || ""
+                )
               : "";
             const helpEntry = getExerciseHelpEntry(exercise.helpSlug || exercise.name);
             const alternateEntry = exercise.alternateHelpSlug ? getExerciseHelpEntry(exercise.alternateHelpSlug) : null;
@@ -4864,7 +5184,11 @@ function renderStrengthCard(summary) {
                   const lastCompletedFinisher = getLastCompletedFinisherPerformance(finisher.id, exercise.name);
                   const pendingIncrease = getPendingFinisherIncreaseReminder(finisher.id, exercise.name, dateKey);
                   const lastCompletedSummary = lastCompletedFinisher
-                    ? formatCompletedExerciseSetSummary(exercise.name, lastCompletedFinisher.exercise.actualSets || [])
+                    ? formatCompletedExerciseSetSummary(
+                        exercise.name,
+                        lastCompletedFinisher.exercise.actualSets || [],
+                        lastCompletedFinisher.exercise.repsCompleted || exercise.reps || ""
+                      )
                     : "";
                   return `
                   <div class="finisher-exercise">
@@ -5139,6 +5463,15 @@ function renderScorecard(summary) {
 
 function renderProgress(summary) {
   const momentum = summary.momentum;
+  const scoringAuditRows = (summary.scoringAudit || []).map((row) => `
+    <div class="strength-trend-row">
+      <div>
+        <span>${escapeHtml(formatDisplayDate(row.date))}</span>
+        <div class="strength-trend-note">${escapeHtml(row.sourceModel)} day</div>
+      </div>
+      <strong>${row.priorScore} -> ${row.normalizedScore} (${formatSigned(row.delta, 0)})</strong>
+    </div>
+  `).join("");
   const strengthTrendRows = summary.strengthTrends.groups.map((item) => {
     const suffix = item.percentChange == null ? "" : ` ${item.percentChange > 0 ? "+" : ""}${formatMaybe(item.percentChange, 1)}%`;
     return `
@@ -5171,6 +5504,13 @@ function renderProgress(summary) {
         <div class="strength-trends-grid">${strengthTrendRows}</div>
         <div class="strength-trend-insight">${escapeHtml(summary.strengthTrends.insight)}</div>
       </div>
+      ${scoringAuditRows ? `
+        <details class="compact-details">
+          <summary>Scoring Audit</summary>
+          <div class="strength-trend-note">Normalized with current scoring.</div>
+          <div class="strength-trends-grid">${scoringAuditRows}</div>
+        </details>
+      ` : ""}
     </div>
   `;
 }
@@ -5693,12 +6033,12 @@ function buildWeeklyScorecard(loggedEntries, weekly, strengthSummary) {
   const recentWeights = recentWeek.filter((day) => day.weight != null);
   const eatingDays = recentWeek.filter((day) => day.mode === "full" && (day.foodModel === "meal-v2" || day.foodModel === "structure-v1" || day.answeredMeals.length));
   const eatingAverages = eatingDays.map((day) => getUnifiedFoodMetric(day)).filter((value) => value != null);
-  const inControlDays = eatingDays.filter((day) => day.foodModel === "meal-v2" ? (day.nutritionScore ?? 0) >= 70 : day.foodModel === "structure-v1" ? (day.foodStructureScore ?? 0) >= 4 : (getLegacyFoodAverage(day) ?? 99) <= 2).length;
-  const offTrackDays = eatingDays.filter((day) => day.foodModel === "meal-v2" ? (day.nutritionScore ?? 100) < 55 : day.foodModel === "structure-v1" ? (day.foodStructureScore ?? 0) <= 2 : (getLegacyFoodAverage(day) ?? 0) >= 4).length;
+  const inControlDays = eatingDays.filter((day) => (getUnifiedFoodMetric(day) ?? 0) >= 3.8).length;
+  const offTrackDays = eatingDays.filter((day) => (getUnifiedFoodMetric(day) ?? 5) <= 2.6).length;
   const consistencyScore = Math.round(
     (Math.min(1, strengthSummary.progress.workoutsThisWeek.length / Math.max(1, state.strengthSettings.daysPerWeek)) * 40) +
     (Math.min(1, inControlDays / Math.max(1, eatingAverages.length || 1)) * 35) +
-    (Math.min(1, (weekly.avgActiveCalories || 0) / 700) * 25)
+    (((getMovementScoreFromCalories(weekly.avgActiveCalories) ?? 0) / 100) * 25)
   );
 
   return {
@@ -5732,6 +6072,26 @@ function buildProgressSummary(loggedEntries, weekly, strengthSummary, momentum) 
       : "Daily scale is noisy. Use the rolling average to judge direction.",
     momentumSummary: momentum?.momentumLabel || "Momentum builds through repeatable days.",
   };
+}
+
+function buildScoringAuditRows(currentEntries, previousRuleEntries) {
+  const previousMap = new Map(previousRuleEntries.map((day) => [day.date, day]));
+  return currentEntries
+    .slice(-7)
+    .map((day) => {
+      const previous = previousMap.get(day.date);
+      if (!previous) {
+        return null;
+      }
+      return {
+        date: day.date,
+        sourceModel: day.normalizedSourceModel || day.foodModel || "legacy",
+        priorScore: previous.totalScore,
+        normalizedScore: day.totalScore,
+        delta: day.totalScore - previous.totalScore,
+      };
+    })
+    .filter(Boolean);
 }
 
 function downloadTextFile(filename, content, type) {
@@ -5787,11 +6147,11 @@ function exportCsv(type) {
         day.mealBehavior?.snacks?.protein ? 1 : 0,
         day.activeCalories ?? "",
         day.alcohol || "",
-        day.foodStructure?.breakfastControlled ? 1 : 0,
-        day.foodStructure?.lunchAnchorMeal ? 1 : 0,
-        day.foodStructure?.afternoonSnackControlled ? 1 : 0,
-        day.foodStructure?.dinnerPortionControlled ? 1 : 0,
-        day.foodStructure?.noNightEating ? 1 : 0,
+        day.foodStructure?.breakfastControlled ?? "",
+        day.foodStructure?.lunchAnchorMeal ?? "",
+        day.foodStructure?.afternoonSnackControlled ?? "",
+        day.foodStructure?.dinnerPortionControlled ?? "",
+        day.foodStructure?.noNightEating ?? "",
         day.foodStructureScore ?? "",
         day.nutritionScore ?? "",
         day.dailyHealthScore ?? day.totalScore ?? "",
@@ -6119,7 +6479,7 @@ function buildGuardrails(summary) {
   if (summary.weekly.avgExerciseLogged != null && summary.weekly.avgExerciseLogged < state.settings.exerciseGoal * 0.6) {
     messages.push("Exercise consistency is falling off.");
   }
-  if (summary.weekly.avgFoodPointsLogged != null && summary.weekly.avgFoodPointsLogged < 18) {
+  if (summary.weekly.avgNutritionScoreLogged != null && summary.weekly.avgNutritionScoreLogged < 70) {
     messages.push("Food quality / control is probably the main leak right now.");
   }
   if (summary.weekly.loggedDays < 4) {
