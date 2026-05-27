@@ -6193,12 +6193,10 @@ function exportCsv(type) {
 
 function renderCharts(summary) {
   const range = state.meta?.trendsRange || "all";
-  const scoreDays = filterTimelineByTrendRange(
-    summary.timelineLogged.filter((day) => day.date < getTodayKey()),
-    range
-  );
-  const weightDays = scoreDays.map((day) => ({ ...day, weight: day.weight ?? null }));
-  const bodyFatDays = scoreDays.map((day) => ({ ...day, bodyFat: day.bodyFat ?? null }));
+  const fullRangeDays = filterTimelineByTrendRange(summary.timelineLogged, range);
+  const scoreDays = fullRangeDays.filter((day) => day.date < getTodayKey());
+  const weightDays = fullRangeDays.map((day) => ({ ...day, weight: day.weight ?? null }));
+  const bodyFatDays = fullRangeDays.map((day) => ({ ...day, bodyFat: day.bodyFat ?? null }));
 
   chartWrap.innerHTML = `
     ${renderLineChart("Weight", weightDays, "weight", state.settings.weightGoal, buildRollingAverageSeries(weightDays.filter((day) => day.weight != null), "weight"))}
