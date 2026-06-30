@@ -1191,6 +1191,64 @@ function createEmptyState() {
   };
 }
 
+function mergeStrengthPlan(rawPlan = null) {
+  const basePlan = JSON.parse(JSON.stringify(defaultStrengthPlan));
+  if (!rawPlan || typeof rawPlan !== "object") {
+    return basePlan;
+  }
+
+  const incomingWorkouts = Array.isArray(rawPlan.workouts) ? rawPlan.workouts : [];
+  const incomingById = new Map(incomingWorkouts.map((workout) => [workout.id, workout]));
+  const hasModernWorkoutSet = ["workout-a", "workout-b", "workout-c"].every((id) => incomingById.has(id));
+
+  basePlan.workouts = basePlan.workouts.map((workout) => {
+    const incoming = incomingById.get(workout.id);
+    if (!incoming) {
+      return workout;
+    }
+    return {
+      ...workout,
+      ...incoming,
+      exercises: Array.isArray(incoming.exercises) && incoming.exercises.length
+        ? incoming.exercises
+        : workout.exercises,
+    };
+  });
+
+  if (!hasModernWorkoutSet) {
+    return basePlan;
+  }
+
+  if (rawPlan.awayWorkout && typeof rawPlan.awayWorkout === "object") {
+    basePlan.awayWorkout = {
+      ...basePlan.awayWorkout,
+      ...rawPlan.awayWorkout,
+      exercises: Array.isArray(rawPlan.awayWorkout.exercises) && rawPlan.awayWorkout.exercises.length
+        ? rawPlan.awayWorkout.exercises
+        : basePlan.awayWorkout.exercises,
+    };
+  }
+
+  if (Array.isArray(rawPlan.optionalFinishers) && rawPlan.optionalFinishers.length) {
+    const finisherById = new Map(rawPlan.optionalFinishers.map((finisher) => [finisher.id, finisher]));
+    basePlan.optionalFinishers = basePlan.optionalFinishers.map((finisher) => {
+      const incoming = finisherById.get(finisher.id);
+      if (!incoming) {
+        return finisher;
+      }
+      return {
+        ...finisher,
+        ...incoming,
+        exercises: Array.isArray(incoming.exercises) && incoming.exercises.length
+          ? incoming.exercises
+          : finisher.exercises,
+      };
+    });
+  }
+
+  return basePlan;
+}
+
 function getStateRichness(candidateState) {
   const entryCount = Object.keys(candidateState?.entries || {}).length;
   const strengthCount = Array.isArray(candidateState?.strengthHistory) ? candidateState.strengthHistory.length : 0;
@@ -1243,9 +1301,7 @@ function migrateState(parsed, sourceKey) {
     ...base.strengthSettings,
     ...(parsed.strengthSettings || {}),
   };
-  const strengthPlan = parsed.strengthPlan?.workouts?.length
-    ? parsed.strengthPlan
-    : JSON.parse(JSON.stringify(defaultStrengthPlan));
+  const strengthPlan = mergeStrengthPlan(parsed.strengthPlan);
 
   if (!settings.mode) {
     settings.mode = "full";
