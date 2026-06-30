@@ -5315,6 +5315,20 @@ function setStrengthWorkoutSelection(workoutId) {
   }, state.strengthPlan).exercises;
   saveState();
   render();
+  setStatus(`Loaded ${workout.name}. Exercises, suggested weights, sets, and reps are shown below.`);
+}
+
+function getStrengthWorkoutShortLabel(workoutId = "") {
+  if (workoutId === "workout-a") {
+    return "A";
+  }
+  if (workoutId === "workout-b") {
+    return "B";
+  }
+  if (workoutId === "workout-c") {
+    return "C";
+  }
+  return "Gym";
 }
 
 function setHomeWorkoutSelection(workoutId) {
@@ -5931,12 +5945,18 @@ function renderStrengthCard(summary) {
       <div class="strength-exercise-name">${escapeHtml(recommendedWorkout.label)}</div>
       <div class="strength-exercise-meta">${escapeHtml(recommendedWorkout.sublabel)}</div>
       ${recommendedHomeWorkout ? `<div class="strength-exercise-meta">Can't get to the gym? Do ${escapeHtml(recommendedHomeWorkout.name)} instead.</div>` : ""}
-      <div class="strength-workout-selector">
-        ${(state.strengthPlan.workouts || []).map((item) => `
-          <button type="button" class="secondary-button compact strength-workout-button ${item.id === workout.id ? "is-active" : ""}" data-strength-workout="${item.id}">
-            ${escapeHtml(item.id === "workout-c" ? `${item.name} (Bonus)` : `${item.name} (Priority)`)}
-          </button>
-        `).join("")}
+      <div class="strength-picker-card">
+        <div class="today-focus-label">Choose Gym Workout</div>
+        <div class="strength-exercise-meta">Tap A, B, or C to load the exercises, suggested weights, target sets, and reps below.</div>
+        <div class="strength-workout-selector">
+          ${(state.strengthPlan.workouts || []).map((item) => `
+            <button type="button" class="secondary-button compact strength-workout-button ${item.id === workout.id ? "is-active" : ""}" data-strength-workout="${item.id}">
+              <span class="strength-workout-button-code">${escapeHtml(getStrengthWorkoutShortLabel(item.id))}</span>
+              <span class="strength-workout-button-name">${escapeHtml(item.name.replace(/^Workout\\s+[ABC]\\s+-\\s*/i, ""))}</span>
+            </button>
+          `).join("")}
+        </div>
+        <div class="strength-selected-workout">Selected: ${escapeHtml(workout.name)}</div>
       </div>
       <div class="strength-exercise-meta">${escapeHtml(`30 min estimate • two-day week target: ${getWorkoutPlan("workout-a")?.name || "Workout A"} + ${getWorkoutPlan("workout-b")?.name || "Workout B"}`)}</div>
       ${recommendedHomeWorkout ? `<button type="button" class="secondary-button compact" data-home-workout="${escapeHtml(recommendedWorkout.workout?.id || "")}">Use Home Version</button>` : ""}

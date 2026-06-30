@@ -1772,6 +1772,52 @@ button,
   padding: 12px;
 }
 
+.strength-picker-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(13, 59, 102, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.strength-workout-selector {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.strength-workout-button {
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  text-align: center;
+  min-height: 64px;
+}
+
+.strength-workout-button.is-active {
+  background: var(--brand);
+  color: white;
+  border-color: var(--brand);
+}
+
+.strength-workout-button-code {
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.strength-workout-button-name {
+  font-size: 0.74rem;
+  line-height: 1.2;
+}
+
+.strength-selected-workout {
+  color: var(--ink);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
 .strength-reason-details,
 .momentum-extra {
   display: grid;
