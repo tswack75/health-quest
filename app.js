@@ -1,9 +1,10 @@
-const APP_VERSION = "v4.17.0";
-const CURRENT_SCORING_VERSION = "v4.17.0";
+const APP_VERSION = "v4.18.0";
+const CURRENT_SCORING_VERSION = "v4.18.0";
 const STORAGE_KEY = "health-quest-v3";
 const LEGACY_KEYS = ["health-quest-v2", "health-quest-v1"];
 const FOOD_SCORING_UPDATE_DATE = "2026-04-06";
 const FOOD_MODEL_V2_DATE = "2026-04-10";
+const FOOD_MODEL_V3_DATE = "2026-06-30";
 const mealSlots = ["morning", "lunch", "afternoon", "dinner", "other"];
 const coreMealSlots = ["morning", "lunch", "afternoon", "dinner"];
 const mealBehaviorItems = [
@@ -11,25 +12,31 @@ const mealBehaviorItems = [
     key: "breakfast",
     label: "Breakfast",
     helper: "Protein-forward and controlled when you eat it.",
-    weight: 0.15,
+    weight: 0.12,
   },
   {
     key: "lunch",
     label: "Lunch",
     helper: "Anchor the middle of the day with structure.",
-    weight: 0.25,
+    weight: 0.23,
+  },
+  {
+    key: "afternoonSnack",
+    label: "Afternoon Snack",
+    helper: "Plan the snack before hunger starts driving.",
+    weight: 0.15,
   },
   {
     key: "dinner",
     label: "Dinner",
     helper: "Stay in control late when drift usually shows up.",
-    weight: 0.4,
+    weight: 0.35,
   },
   {
-    key: "snacks",
-    label: "Snacks",
-    helper: "Keep snacks deliberate instead of reactive.",
-    weight: 0.2,
+    key: "nightSnack",
+    label: "Night Snack",
+    helper: "No night snack is ideal; if needed, keep it deliberate and controlled.",
+    weight: 0.15,
   },
 ];
 // Food score guide text lives here so the in-app guide and the score reminders
@@ -60,16 +67,28 @@ const mealScoreOptions = [
 const mealBehaviorQualityMap = {
   0: null,
   1: 100,
-  2: 88,
-  3: 62,
-  4: 22,
+  2: 82,
+  3: 55,
+  4: 18,
   5: 0,
 };
 const healthWeights = {
-  nutrition: 0.45,
-  movement: 0.25,
-  strength: 0.15,
-  consistency: 0.15,
+  nutrition: 0.5,
+  movement: 0.2,
+  strength: 0.17,
+  consistency: 0.13,
+};
+const foodDriftPenalties = {
+  lunchDrift: 2,
+  afternoonSnackDrift: 3,
+  dinnerDrift: 5,
+  nightSnackDrift: 7,
+  lunchRough: 3,
+  afternoonSnackRough: 4,
+  dinnerRough: 5,
+  nightSnackRough: 8,
+  multiDrift: 5,
+  roughStacking: 8,
 };
 const xpRules = {
   baseLoggedDay: 15,
@@ -94,8 +113,8 @@ const bandResistanceMultipliers = {
   heavy: 1.5,
 };
 const weightedStrengthSourceTypes = new Set(["gym_weighted"]);
-const awayStrengthSourceTypes = new Set(["away_bodyweight", "away_timed", "away_band"]);
-const supportStrengthSourceTypes = new Set(["gym_bodyweight", "gym_timed", "away_bodyweight", "away_timed", "away_band"]);
+const awayStrengthSourceTypes = new Set(["away_bodyweight", "away_timed", "away_band", "home_bodyweight"]);
+const supportStrengthSourceTypes = new Set(["gym_bodyweight", "gym_timed", "away_bodyweight", "away_timed", "away_band", "home_bodyweight"]);
 const awayWorkoutExerciseLibrary = [
   { name: "Incline Pushups", type: "bodyweight", sets: 3, targetReps: "8-15" },
   { name: "Bodyweight Squats", type: "bodyweight", sets: 3, targetReps: "10-20" },
@@ -115,15 +134,182 @@ const awayWorkoutExerciseLibrary = [
   { name: "Band Curls", type: "band", sets: 2, targetReps: "10-15" },
   { name: "Band Triceps Extensions", type: "band", sets: 2, targetReps: "10-15" },
 ];
+const homeWorkoutLibrary = {
+  A: {
+    id: "home-a-upper-push-arms",
+    name: "Home A - Upper Push / Arms",
+    correspondsTo: "workout-a",
+    estimatedDurationMinutes: 15,
+    priority: 1,
+    exercises: [
+      {
+        name: "Incline Pushups",
+        type: "bodyweight",
+        sets: 3,
+        targetReps: "8-15",
+        primary: "Chest",
+        secondary: ["Shoulders", "Arms"],
+        note: "Use countertop, bench, or stairs. Lower incline = harder.",
+      },
+      {
+        name: "Pushups",
+        type: "bodyweight",
+        sets: 3,
+        targetReps: "6-12",
+        primary: "Chest",
+        secondary: ["Shoulders", "Arms", "Core"],
+        note: "Use regular pushups if clean; otherwise stay incline.",
+      },
+      {
+        name: "Pike Pushups",
+        type: "bodyweight",
+        sets: 2,
+        targetReps: "6-10",
+        primary: "Shoulders",
+        secondary: ["Chest", "Arms"],
+        note: "Sub wall pushups if shoulders feel cranky.",
+      },
+      {
+        name: "Chair Dips",
+        type: "bodyweight",
+        sets: 2,
+        targetReps: "8-12",
+        primary: "Arms",
+        secondary: ["Chest", "Shoulders"],
+        note: "Skip if shoulders complain; use close-grip incline pushups instead.",
+      },
+      {
+        name: "Plank Shoulder Taps",
+        type: "bodyweight",
+        sets: 2,
+        targetReps: "10-20",
+        primary: "Core",
+        secondary: ["Shoulders"],
+        note: "Keep hips quiet. Slow beats fast.",
+      },
+    ],
+  },
+  B: {
+    id: "home-b-pull-legs-core",
+    name: "Home B - Pull / Legs / Core",
+    correspondsTo: "workout-b",
+    estimatedDurationMinutes: 15,
+    priority: 2,
+    exercises: [
+      {
+        name: "Glute Bridges",
+        type: "bodyweight",
+        sets: 3,
+        targetReps: "10-20",
+        primary: "Legs",
+        secondary: ["Core"],
+        kneeFriendly: true,
+        note: "Posterior-chain substitute for RDLs.",
+      },
+      {
+        name: "Bird Dogs",
+        type: "bodyweight",
+        sets: 2,
+        targetReps: "6-10",
+        primary: "Core",
+        secondary: ["Back"],
+        kneeFriendly: true,
+        note: "Slow and controlled.",
+      },
+      {
+        name: "Dead Bugs",
+        type: "bodyweight",
+        sets: 2,
+        targetReps: "6-10",
+        primary: "Core",
+        secondary: [],
+        kneeFriendly: true,
+        note: "Keep low back quiet.",
+      },
+      {
+        name: "Prone W Raises",
+        type: "bodyweight",
+        sets: 2,
+        targetReps: "8-12",
+        primary: "Back",
+        secondary: ["Shoulders"],
+        note: "Bodyweight pull substitute for upper-back work.",
+      },
+      {
+        name: "Side Plank",
+        type: "timed",
+        sets: 2,
+        targetSeconds: "15-30",
+        primary: "Core",
+        secondary: ["Shoulders"],
+        note: "Do both sides.",
+      },
+    ],
+  },
+  C: {
+    id: "home-c-full-body-maintenance",
+    name: "Home C - Full-Body Maintenance",
+    correspondsTo: "workout-c",
+    estimatedDurationMinutes: 15,
+    priority: 3,
+    exercises: [
+      {
+        name: "Incline Pushups",
+        type: "bodyweight",
+        sets: 3,
+        targetReps: "8-15",
+        primary: "Chest",
+        secondary: ["Shoulders", "Arms"],
+      },
+      {
+        name: "Bodyweight Squats",
+        type: "bodyweight",
+        sets: 2,
+        targetReps: "8-15",
+        primary: "Legs",
+        secondary: ["Core"],
+        kneeSensitiveAlternative: "Glute Bridges",
+      },
+      {
+        name: "Glute Bridges",
+        type: "bodyweight",
+        sets: 2,
+        targetReps: "10-20",
+        primary: "Legs",
+        secondary: ["Core"],
+        kneeFriendly: true,
+      },
+      {
+        name: "Dead Bugs",
+        type: "bodyweight",
+        sets: 2,
+        targetReps: "6-10",
+        primary: "Core",
+        secondary: [],
+      },
+      {
+        name: "Side Plank",
+        type: "timed",
+        sets: 2,
+        targetSeconds: "15-30",
+        primary: "Core",
+        secondary: ["Shoulders"],
+      },
+    ],
+  },
+};
 const strengthExerciseDefinitions = [
   { name: "Bench Press", type: "weighted", primary: "Chest", secondary: ["Shoulders", "Arms"] },
   { name: "Dumbbell Press", type: "weighted", primary: "Chest", secondary: ["Shoulders", "Arms"] },
   { name: "Dumbbell Bench Press", type: "weighted", primary: "Chest", secondary: ["Shoulders", "Arms"] },
   { name: "Dumbbell Bench Press / Incline Push-Ups", type: "weighted", primary: "Chest", secondary: ["Shoulders", "Arms"] },
+  { name: "Incline Dumbbell Press", type: "weighted", primary: "Chest", secondary: ["Shoulders", "Arms"] },
   { name: "Shoulder Press", type: "weighted", primary: "Shoulders", secondary: ["Arms"] },
+  { name: "Seated Dumbbell Shoulder Press", type: "weighted", primary: "Shoulders", secondary: ["Arms"] },
   { name: "Light Dumbbell Shoulder Press", type: "weighted", primary: "Shoulders", secondary: ["Arms"] },
   { name: "Row", type: "weighted", primary: "Back", secondary: ["Arms"] },
   { name: "One-Arm Dumbbell Row", type: "weighted", primary: "Back", secondary: ["Arms"] },
+  { name: "Chest-Supported Row / One-Arm Dumbbell Row", type: "weighted", primary: "Back", secondary: ["Arms"] },
   { name: "Curl", type: "weighted", primary: "Arms", secondary: [] },
   { name: "Dumbbell Curl", type: "weighted", primary: "Arms", secondary: [] },
   { name: "Triceps Extension", type: "weighted", primary: "Arms", secondary: [] },
@@ -134,23 +320,31 @@ const strengthExerciseDefinitions = [
   { name: "Split Squat", type: "weighted", primary: "Legs", secondary: ["Core"] },
   { name: "Deadlift", type: "weighted", primary: "Legs", secondary: ["Back", "Core"] },
   { name: "Romanian Deadlift", type: "weighted", primary: "Legs", secondary: ["Back", "Core"] },
+  { name: "Dumbbell Romanian Deadlift / Glute Bridge", type: "weighted", primary: "Legs", secondary: ["Back", "Core"] },
   { name: "Pushup", type: "bodyweight", primary: "Chest", secondary: ["Shoulders", "Arms", "Core"] },
   { name: "Pushups", type: "bodyweight", primary: "Chest", secondary: ["Shoulders", "Arms", "Core"] },
   { name: "Incline Push-Ups", type: "bodyweight", primary: "Chest", secondary: ["Shoulders", "Arms", "Core"] },
   { name: "Incline Pushups", type: "bodyweight", primary: "Chest", secondary: ["Shoulders", "Arms", "Core"] },
   { name: "Chair Dips", type: "bodyweight", primary: "Arms", secondary: ["Chest", "Shoulders"] },
+  { name: "Pike Pushups", type: "bodyweight", primary: "Shoulders", secondary: ["Chest", "Arms"] },
+  { name: "Plank Shoulder Taps", type: "bodyweight", primary: "Core", secondary: ["Shoulders"] },
   { name: "Bodyweight Squats", type: "bodyweight", primary: "Legs", secondary: ["Core"] },
   { name: "Lunges", type: "bodyweight", primary: "Legs", secondary: ["Core"] },
   { name: "Step-ups", type: "bodyweight", primary: "Legs", secondary: ["Core"] },
   { name: "Plank", type: "timed", primary: "Core", secondary: [] },
   { name: "Plank / Dead Bug", type: "timed", primary: "Core", secondary: [] },
   { name: "Side Plank", type: "timed", primary: "Core", secondary: ["Shoulders"] },
+  { name: "Side Plank / Dead Bug", type: "timed", primary: "Core", secondary: ["Shoulders"] },
   { name: "Dead Bug", type: "bodyweight", primary: "Core", secondary: [] },
   { name: "Dead Bugs", type: "bodyweight", primary: "Core", secondary: [] },
   { name: "Glute Bridge", type: "bodyweight", primary: "Legs", secondary: ["Core"] },
   { name: "Glute Bridges", type: "bodyweight", primary: "Legs", secondary: ["Core"] },
   { name: "Bird Dogs", type: "bodyweight", primary: "Core", secondary: ["Back"] },
+  { name: "Prone W Raises", type: "bodyweight", primary: "Back", secondary: ["Shoulders"] },
   { name: "Wall Sit", type: "timed", primary: "Legs", secondary: ["Core"] },
+  { name: "Farmer Carry / Suitcase Carry", type: "timed", primary: "Core", secondary: ["Arms", "Back"] },
+  { name: "Lateral Raise", type: "weighted", primary: "Shoulders", secondary: [] },
+  { name: "Lateral Raise / Light Shoulder Press", type: "weighted", primary: "Shoulders", secondary: ["Arms"] },
   { name: "Band Rows", type: "band", primary: "Back", secondary: ["Arms"] },
   { name: "Band Press", type: "band", primary: "Chest", secondary: ["Shoulders", "Arms"] },
   { name: "Band Shoulder Press", type: "band", primary: "Shoulders", secondary: ["Arms"] },
@@ -317,48 +511,163 @@ const defaultStrengthSettings = {
   storyIntegration: true,
 };
 const defaultStrengthPlan = {
-  version: 1,
-  name: "Beginner Full Body",
+  version: 2,
+  name: "A/B/C 30-Minute Strength",
   workouts: [
     {
-      id: "full-body-a",
-          name: "Strength A",
+      id: "workout-a",
+      name: "Workout A - Upper Push / Arms",
+      priority: 1,
+      estimatedDurationMinutes: 30,
+      focusTags: ["chest", "shoulders", "arms"],
       exercises: [
         {
-          name: "Goblet Squat",
-          sets: 3,
-          reps: 8,
-          repRange: [8, 10],
-          helpSlug: "goblet-squat",
-        },
-        {
           name: "Dumbbell Bench Press",
-          sets: 3,
-          reps: 8,
-          repRange: [8, 10],
+          sets: 4,
+          reps: "6-8",
+          repRange: [6, 8],
+          startingWeight: 37.5,
           helpSlug: "dumbbell-bench-press",
           alternateHelpSlug: "incline-push-ups",
         },
         {
+          name: "Seated Dumbbell Shoulder Press",
+          sets: 3,
+          reps: "8-10",
+          repRange: [8, 10],
+          startingWeight: 22.5,
+          helpSlug: "light-dumbbell-shoulder-press",
+        },
+        {
+          name: "Incline Dumbbell Press",
+          sets: 3,
+          reps: "6-10",
+          repRange: [6, 10],
+          startingWeight: 30,
+          helpSlug: "dumbbell-bench-press",
+          alternateHelpSlug: "incline-push-ups",
+        },
+        {
+          name: "Lateral Raise",
+          sets: 2,
+          reps: "10-15",
+          repRange: [10, 15],
+          startingWeight: 12.5,
+          helpSlug: "light-dumbbell-shoulder-press",
+        },
+        {
+          name: "Dumbbell Curl",
+          sets: 2,
+          reps: "8-12",
+          repRange: [8, 12],
+          startingWeight: 22.5,
+          helpSlug: "dumbbell-curl",
+        },
+        {
+          name: "Overhead Dumbbell Triceps Extension",
+          sets: 2,
+          reps: "8-12",
+          repRange: [8, 12],
+          startingWeight: 30,
+          helpSlug: "overhead-dumbbell-triceps-extension",
+        },
+      ],
+    },
+    {
+      id: "workout-b",
+      name: "Workout B - Pull / Legs / Core",
+      priority: 2,
+      estimatedDurationMinutes: 30,
+      focusTags: ["back", "legs", "core"],
+      exercises: [
+        {
           name: "One-Arm Dumbbell Row",
           sets: 3,
-          reps: 8,
+          reps: "8-10",
           repRange: [8, 10],
+          startingWeight: 35,
           helpSlug: "one-arm-dumbbell-row",
         },
         {
           name: "Romanian Deadlift",
           sets: 3,
-          reps: 8,
+          reps: "8-10",
           repRange: [8, 10],
+          startingWeight: 30,
+          helpSlug: "romanian-deadlift",
+          kneeFriendly: true,
+        },
+        {
+          name: "Goblet Squat",
+          sets: 2,
+          reps: "8-10",
+          repRange: [8, 10],
+          startingWeight: 30,
+          helpSlug: "goblet-squat",
+          kneeFriendlyAlternative: "Glute Bridge or Leg Press with controlled range",
+        },
+        {
+          name: "Plank / Dead Bug",
+          sets: 3,
+          reps: "30-45 sec or 6-10/side",
+          repRange: [30, 45],
+          helpSlug: "plank",
+          alternateHelpSlug: "dead-bug",
+        },
+        {
+          name: "Farmer Carry / Suitcase Carry",
+          sets: 3,
+          reps: "30-45 sec",
+          repRange: [30, 45],
+          helpSlug: "plank",
+        },
+      ],
+    },
+    {
+      id: "workout-c",
+      name: "Workout C - Full-Body Maintenance",
+      priority: 3,
+      estimatedDurationMinutes: 30,
+      focusTags: ["bonus", "full-body"],
+      exercises: [
+        {
+          name: "Incline Dumbbell Press",
+          sets: 3,
+          reps: "8-12",
+          repRange: [8, 12],
+          startingWeight: 30,
+          helpSlug: "dumbbell-bench-press",
+          alternateHelpSlug: "incline-push-ups",
+        },
+        {
+          name: "Chest-Supported Row / One-Arm Dumbbell Row",
+          sets: 3,
+          reps: "8-12",
+          repRange: [8, 12],
+          startingWeight: 35,
+          helpSlug: "one-arm-dumbbell-row",
+        },
+        {
+          name: "Dumbbell Romanian Deadlift / Glute Bridge",
+          sets: 2,
+          reps: "8-12",
+          repRange: [8, 12],
+          startingWeight: 30,
           helpSlug: "romanian-deadlift",
         },
         {
-          name: "Plank",
-          sets: 3,
-          reps: "30 sec",
-          repRange: [30, 45],
-          optional: true,
+          name: "Lateral Raise / Light Shoulder Press",
+          sets: 2,
+          reps: "10-15",
+          repRange: [10, 15],
+          startingWeight: 12.5,
+          helpSlug: "light-dumbbell-shoulder-press",
+        },
+        {
+          name: "Side Plank / Dead Bug",
+          sets: 2,
+          reps: "2 rounds",
+          repRange: [20, 45],
           helpSlug: "plank",
           alternateHelpSlug: "dead-bug",
         },
@@ -1100,6 +1409,9 @@ function getStrengthSourceType(source, exerciseType, explicitSourceType = "") {
   if (explicitSourceType) {
     return explicitSourceType;
   }
+  if (source === "home_session") {
+    return "home_bodyweight";
+  }
   if (source === "away_session") {
     if (exerciseType === "timed") {
       return "away_timed";
@@ -1142,15 +1454,57 @@ function createAwayWorkoutExerciseFromLibrary(exerciseDefinition) {
   };
 }
 
+function getHomeWorkoutTemplates() {
+  return Object.values(homeWorkoutLibrary);
+}
+
+function getRecommendedHomeWorkoutForGymWorkout(workoutId) {
+  if (!workoutId) {
+    return null;
+  }
+  return getHomeWorkoutTemplates().find((workout) => workout.correspondsTo === workoutId) || null;
+}
+
+function getSelectableAwayExerciseLibrary(awayWorkout = null) {
+  const homeTemplate = awayWorkout?.sourceKind === "home"
+    ? getHomeWorkoutTemplates().find((item) => item.id === awayWorkout.homeWorkoutId)
+    : null;
+  return Array.from(new Map(
+    [...awayWorkoutExerciseLibrary, ...(homeTemplate?.exercises || [])]
+      .map((exercise) => [normalizeExerciseKey(exercise.name), exercise])
+  ).values());
+}
+
 function createDefaultAwayWorkout(dateKey, awayWorkoutPlan = defaultStrengthPlan.awayWorkout) {
   return {
     date: dateKey,
     workoutType: "Away From Gym",
     templateName: awayWorkoutPlan?.templateName || defaultStrengthPlan.awayWorkout.templateName || "Momentum Strength Session",
+    sourceKind: "away",
+    homeWorkoutId: "",
+    correspondsToWorkoutId: "",
     durationMinutes: 20,
     intensity: "moderate",
     notes: "",
     exercises: awayWorkoutExerciseLibrary.slice(0, 5).map((exercise) => createAwayWorkoutExerciseFromLibrary(exercise)),
+  };
+}
+
+function createHomeWorkoutFromTemplate(dateKey, homeWorkoutTemplate) {
+  if (!homeWorkoutTemplate) {
+    return createDefaultAwayWorkout(dateKey);
+  }
+  return {
+    date: dateKey,
+    workoutType: "Home Workout",
+    templateName: homeWorkoutTemplate.name,
+    sourceKind: "home",
+    homeWorkoutId: homeWorkoutTemplate.id,
+    correspondsToWorkoutId: homeWorkoutTemplate.correspondsTo || "",
+    durationMinutes: Number(homeWorkoutTemplate.estimatedDurationMinutes) || 15,
+    intensity: "moderate",
+    notes: "",
+    exercises: (homeWorkoutTemplate.exercises || []).map((exercise) => createAwayWorkoutExerciseFromLibrary(exercise)),
   };
 }
 
@@ -1178,14 +1532,24 @@ function migrateAwayWorkout(rawAwayWorkout, dateKey, awayWorkoutPlan = defaultSt
   if (!rawAwayWorkout) {
     return base;
   }
+  const homeTemplate = getHomeWorkoutTemplates().find((item) =>
+    item.id === rawAwayWorkout.homeWorkoutId ||
+    item.correspondsTo === rawAwayWorkout.correspondsToWorkoutId ||
+    normalizeExerciseKey(item.name) === normalizeExerciseKey(rawAwayWorkout.templateName)
+  ) || null;
   const rawExercises = Array.isArray(rawAwayWorkout.exercises) && rawAwayWorkout.exercises.length
     ? rawAwayWorkout.exercises
-    : base.exercises;
+    : homeTemplate
+      ? createHomeWorkoutFromTemplate(dateKey, homeTemplate).exercises
+      : base.exercises;
   return {
     date: rawAwayWorkout.date || dateKey,
-    workoutType: rawAwayWorkout.workoutType || "Away From Gym",
-    templateName: rawAwayWorkout.templateName || base.templateName,
-    durationMinutes: Number(rawAwayWorkout.durationMinutes) || base.durationMinutes,
+    workoutType: rawAwayWorkout.workoutType || (homeTemplate ? "Home Workout" : "Away From Gym"),
+    templateName: rawAwayWorkout.templateName || (homeTemplate ? homeTemplate.name : base.templateName),
+    sourceKind: (rawAwayWorkout.sourceKind === "home" || homeTemplate) ? "home" : "away",
+    homeWorkoutId: rawAwayWorkout.homeWorkoutId || homeTemplate?.id || "",
+    correspondsToWorkoutId: rawAwayWorkout.correspondsToWorkoutId || homeTemplate?.correspondsTo || "",
+    durationMinutes: Number(rawAwayWorkout.durationMinutes) || (homeTemplate?.estimatedDurationMinutes || base.durationMinutes),
     intensity: ["easy", "moderate", "hard"].includes(rawAwayWorkout.intensity) ? rawAwayWorkout.intensity : base.intensity,
     notes: typeof rawAwayWorkout.notes === "string" ? rawAwayWorkout.notes.slice(0, 160) : "",
     exercises: rawExercises.map((exercise) => migrateAwayWorkoutExercise(exercise, dateKey)),
@@ -1232,7 +1596,7 @@ function computeStrengthLogDerivedFields(log) {
 
   const performanceScore = baseScore == null
     ? null
-    : sourceType.startsWith("away_")
+    : (sourceType.startsWith("away_") || sourceType === "home_bodyweight")
       ? Number((baseScore * getAwayWorkoutIntensityMultiplier(intensity)).toFixed(1))
       : baseScore;
   const muscleGroupContributions = [];
@@ -1306,7 +1670,7 @@ function buildStrengthLogsFromSession(session) {
   }
   const logs = [];
   for (const exercise of session.exercises || []) {
-    const populatedSets = (exercise.actualSets || []).filter((set) => set.weight || set.reps);
+    const populatedSets = (exercise.actualSets || []).filter((set) => set.weight || set.reps || getDerivedCompletedStrengthSet(set));
     if (!populatedSets.length) {
       continue;
     }
@@ -1331,7 +1695,7 @@ function buildStrengthLogsFromSession(session) {
 
   for (const finisher of session.optionalFinishers || []) {
     for (const exercise of finisher.exercises || []) {
-      const populatedSets = (exercise.actualSets || []).filter((set) => set.weight || set.reps);
+      const populatedSets = (exercise.actualSets || []).filter((set) => set.weight || set.reps || getDerivedCompletedStrengthSet(set));
       if (!populatedSets.length) {
         continue;
       }
@@ -1375,9 +1739,9 @@ function buildStrengthLogsFromSession(session) {
       exerciseType,
       sets,
       notes: session.awayWorkout?.notes || session.note || "",
-      source: "away_session",
+      source: session.awayWorkout?.sourceKind === "home" ? "home_session" : "away_session",
       sourceSessionId: session.id,
-      sourceType: getStrengthSourceType("away_session", exerciseType),
+      sourceType: getStrengthSourceType(session.awayWorkout?.sourceKind === "home" ? "home_session" : "away_session", exerciseType),
       intensity: session.awayWorkout?.intensity || "moderate",
       resistanceLevel: exercise.resistanceLevel || "light",
       increaseNextTime: false,
@@ -1413,7 +1777,7 @@ function migrateEntry(dateKey, rawEntry, sourceVersion = 4) {
       protein: Boolean(sourceMeal?.protein),
     };
   }
-  const hasMealBehavior = Boolean(rawEntry?.foodModel === "meal-v2" || rawEntry?.mealBehavior || rawEntry?.mealsDetailed || rawEntry?.mealDetails);
+  const hasMealBehavior = Boolean(["meal-v2", "meal-v3"].includes(rawEntry?.foodModel) || rawEntry?.mealBehavior || rawEntry?.mealsDetailed || rawEntry?.mealDetails);
 
   return {
     date: entryDate,
@@ -1439,7 +1803,7 @@ function migrateEntry(dateKey, rawEntry, sourceVersion = 4) {
       foodNote: typeof (rawEntry?.foodNote ?? rawEntry?.mealNote) === "string" ? String(rawEntry?.foodNote ?? rawEntry?.mealNote).slice(0, 120) : "",
       foodStructureNote: typeof (rawEntry?.foodStructureNote ?? rawEntry?.structuredFoodNote) === "string" ? String(rawEntry?.foodStructureNote ?? rawEntry?.structuredFoodNote).slice(0, 120) : "",
       mealBehaviorNote: typeof (rawEntry?.mealBehaviorNote ?? rawEntry?.nutritionNote) === "string" ? String(rawEntry?.mealBehaviorNote ?? rawEntry?.nutritionNote).slice(0, 120) : "",
-      foodModel: hasMealBehavior ? "meal-v2" : hasStructuredFood ? "structure-v1" : "legacy",
+      foodModel: hasMealBehavior ? (rawEntry?.foodModel === "meal-v3" ? "meal-v3" : "meal-v2") : hasStructuredFood ? "structure-v1" : "legacy",
       food: migratedFood,
       foodStructure: migratedFoodStructure,
       mealBehavior: migratedMealBehavior,
@@ -1536,6 +1900,7 @@ function migrateStrengthSession(session, strengthPlan = defaultStrengthPlan) {
                   weight: set.weight ?? "",
                   reps: set.reps ?? "",
                   completed: Boolean(set.completed),
+                  derivedCompleted: Boolean(set.completed || set.weight || set.reps || set.seconds),
                 }))
               : Array.from({ length: exercise.sets }, (_, index) => ({
                   set: index + 1,
@@ -1560,11 +1925,13 @@ function migrateStrengthSession(session, strengthPlan = defaultStrengthPlan) {
           weight: set.weight ?? "",
           reps: set.reps ?? "",
           completed: Boolean(set.completed),
+          derivedCompleted: Boolean(set.completed || set.weight || set.reps || set.seconds),
         })) : Array.from({ length: exercise.sets }, (_, index) => ({
           set: index + 1,
           weight: "",
           reps: "",
           completed: false,
+          derivedCompleted: false,
         })),
         completed: Boolean(prior.completed),
         progressed: Boolean(prior.progressed),
@@ -1707,7 +2074,7 @@ function getEntry(dateKey) {
       foodNote: "",
       foodStructureNote: "",
       mealBehaviorNote: "",
-      foodModel: dateKey >= FOOD_MODEL_V2_DATE ? "meal-v2" : dateKey >= FOOD_SCORING_UPDATE_DATE ? "structure-v1" : "legacy",
+      foodModel: dateKey >= FOOD_MODEL_V3_DATE ? "meal-v3" : dateKey >= FOOD_MODEL_V2_DATE ? "meal-v2" : dateKey >= FOOD_SCORING_UPDATE_DATE ? "structure-v1" : "legacy",
       food: createEmptyFoodEntry(),
       foodStructure: createEmptyFoodStructure(),
       mealBehavior: createEmptyMealBehavior(),
@@ -1776,7 +2143,7 @@ function isStructuredFoodEntry(entry) {
 }
 
 function isMealBehaviorEntry(entry) {
-  return (entry?.foodModel || "") === "meal-v2";
+  return ["meal-v2", "meal-v3"].includes(entry?.foodModel || "");
 }
 
 function getDateDiffFromToday(dateKey) {
@@ -1803,14 +2170,14 @@ function shouldUseMealV2UI(entry) {
   if (!entry) {
     return false;
   }
-  return isMealBehaviorEntry(entry) || entry.date >= FOOD_MODEL_V2_DATE;
+  return isMealBehaviorEntry(entry) || entry.date >= FOOD_MODEL_V3_DATE || entry.date >= FOOD_MODEL_V2_DATE;
 }
 
 function saveDailyEntry() {
   const dateKey = getSelectedDateKey();
   const existing = getEntry(dateKey);
-  const foodModel = shouldUseMealV2UI(existing) || dateKey >= FOOD_MODEL_V2_DATE
-    ? "meal-v2"
+  const foodModel = shouldUseMealV2UI(existing) || dateKey >= FOOD_MODEL_V3_DATE
+    ? "meal-v3"
     : shouldUseStructuredFoodUI(existing) || dateKey >= FOOD_SCORING_UPDATE_DATE
       ? "structure-v1"
       : (existing.foodModel || "legacy");
@@ -1833,13 +2200,13 @@ function saveDailyEntry() {
       foodStructureNote: foodModel === "structure-v1"
         ? (document.getElementById("today-food-structure-note")?.value || document.getElementById("food-structure-note")?.value || existing.foodStructureNote || "").trim().slice(0, 120)
         : existing.foodStructureNote || "",
-      mealBehaviorNote: foodModel === "meal-v2"
+      mealBehaviorNote: isMealBehaviorEntry({ foodModel })
         ? (document.getElementById("today-meal-behavior-note")?.value || existing.mealBehaviorNote || "").trim().slice(0, 120)
         : existing.mealBehaviorNote || "",
       foodModel,
       food: foodModel === "legacy" ? readFoodForm(existing.food) : existing.food,
       foodStructure: foodModel === "structure-v1" ? readFoodStructureForm(existing.foodStructure) : existing.foodStructure,
-      mealBehavior: foodModel === "meal-v2" ? readMealBehaviorForm(existing.mealBehavior) : existing.mealBehavior,
+      mealBehavior: isMealBehaviorEntry({ foodModel }) ? readMealBehaviorForm(existing.mealBehavior) : existing.mealBehavior,
     habits: {
       protein: Boolean(document.getElementById("today-habit-protein")?.checked),
       produce: Boolean(document.getElementById("today-habit-produce")?.checked),
@@ -1856,7 +2223,7 @@ function saveDailyEntry() {
   render();
   flashSaveEntryConfirmation();
   const savedEntry = computeSummary().today;
-  const foodSummary = savedEntry.foodModel === "meal-v2"
+  const foodSummary = isMealBehaviorEntry(savedEntry)
     ? ` Nutrition ${formatMaybe(savedEntry.nutritionScore, 0)} saved.`
     : savedEntry.foodModel === "structure-v1"
     ? ` Food structure ${formatFoodStructureScore(savedEntry.foodStructureScore ?? getFoodStructureScore(savedEntry.foodStructure))}/5 saved.`
@@ -2052,12 +2419,17 @@ function normalizeStructureFoodToMealBehavior(foodStructure = createEmptyFoodStr
     confidence: null,
     protein: null,
   };
-  const snackCandidates = [
-    mapStructureLevelToMealScore(foodStructure.afternoonSnackControlled, "afternoonSnackControlled"),
-    mapStructureLevelToMealScore(foodStructure.noNightEating, "noNightEating"),
-  ].filter((score) => score != null);
-  normalized.snacks = {
-    score: snackCandidates.length ? Math.max(...snackCandidates) : null,
+  normalized.afternoonSnack = {
+    score: mapStructureLevelToMealScore(foodStructure.afternoonSnackControlled, "afternoonSnackControlled"),
+    confidence: null,
+    protein: null,
+  };
+  normalized.nightSnack = {
+    score: normalizeFoodStructureLevel(foodStructure.noNightEating) === "strong"
+      ? 0
+      : normalizeFoodStructureLevel(foodStructure.noNightEating) === "off"
+        ? null
+        : null,
     confidence: null,
     protein: null,
   };
@@ -2069,12 +2441,17 @@ function normalizeLegacyFoodToMealBehavior(food = createEmptyFoodEntry()) {
   normalized.breakfast = normalizeLegacyMealToBehavior(food.morning);
   normalized.lunch = normalizeLegacyMealToBehavior(food.lunch);
   normalized.dinner = normalizeLegacyMealToBehavior(food.dinner);
-  normalized.snacks = normalizeLegacyMealToBehavior(getWorstDefinedFoodScore([food.afternoon, food.other]));
+  normalized.afternoonSnack = normalizeLegacyMealToBehavior(getWorstDefinedFoodScore([food.afternoon, food.other]));
+  normalized.nightSnack = {
+    score: null,
+    confidence: null,
+    protein: null,
+  };
   return normalized;
 }
 
 function normalizeMealBehaviorForScoring(entry) {
-  if ((entry.foodModel || "") === "meal-v2") {
+  if ((entry.foodModel || "") === "meal-v3") {
     return Object.fromEntries(mealBehaviorItems.map((item) => {
       const meal = entry.mealBehavior?.[item.key] || {};
       return [item.key, {
@@ -2084,10 +2461,112 @@ function normalizeMealBehaviorForScoring(entry) {
       }];
     }));
   }
+  if ((entry.foodModel || "") === "meal-v2") {
+    const normalized = createNeutralMealBehavior();
+    normalized.breakfast = {
+      score: normalizeFoodValue(entry.mealBehavior?.breakfast?.score),
+      confidence: entry.mealBehavior?.breakfast?.confidence ?? null,
+      protein: entry.mealBehavior?.breakfast?.protein ?? null,
+    };
+    normalized.lunch = {
+      score: normalizeFoodValue(entry.mealBehavior?.lunch?.score),
+      confidence: entry.mealBehavior?.lunch?.confidence ?? null,
+      protein: entry.mealBehavior?.lunch?.protein ?? null,
+    };
+    normalized.afternoonSnack = {
+      score: normalizeFoodValue(entry.mealBehavior?.snacks?.score),
+      confidence: entry.mealBehavior?.snacks?.confidence ?? null,
+      protein: entry.mealBehavior?.snacks?.protein ?? null,
+    };
+    normalized.dinner = {
+      score: normalizeFoodValue(entry.mealBehavior?.dinner?.score),
+      confidence: entry.mealBehavior?.dinner?.confidence ?? null,
+      protein: entry.mealBehavior?.dinner?.protein ?? null,
+    };
+    normalized.nightSnack = {
+      score: entry.habits?.noLateEating === true ? 0 : null,
+      confidence: null,
+      protein: null,
+    };
+    return normalized;
+  }
   if ((entry.foodModel || "") === "structure-v1") {
     return normalizeStructureFoodToMealBehavior(entry.foodStructure);
   }
   return normalizeLegacyFoodToMealBehavior(entry.food);
+}
+
+function getMealScoreValue(entryOrBehavior, key) {
+  const behavior = entryOrBehavior?.mealBehavior ? entryOrBehavior.mealBehavior : entryOrBehavior;
+  if (!behavior) {
+    return null;
+  }
+  if (key === "snacks") {
+    const afternoon = normalizeFoodValue(behavior.afternoonSnack?.score);
+    const night = normalizeFoodValue(behavior.nightSnack?.score);
+    if (afternoon == null && night == null) {
+      return null;
+    }
+    return Math.max(afternoon ?? 0, night ?? 0);
+  }
+  return normalizeFoodValue(behavior[key]?.score);
+}
+
+function getNightSnackQuality(meal = {}, noLateEating = null) {
+  const score = normalizeFoodValue(meal.score);
+  if (score == null) {
+    return noLateEating === true ? 100 : null;
+  }
+  if (score === 0) {
+    return 100;
+  }
+  if (score === 1) {
+    return 90;
+  }
+  if (score === 2) {
+    return 75;
+  }
+  if (score === 3) {
+    return 45;
+  }
+  if (score === 4) {
+    return 15;
+  }
+  return 0;
+}
+
+function getFoodDriftProfile(mealBehavior = {}, habits = {}) {
+  const lunch = getMealScoreValue(mealBehavior, "lunch") ?? -1;
+  const afternoonSnack = getMealScoreValue(mealBehavior, "afternoonSnack") ?? -1;
+  const dinner = getMealScoreValue(mealBehavior, "dinner") ?? -1;
+  const nightSnack = (() => {
+    const value = getMealScoreValue(mealBehavior, "nightSnack");
+    if (value == null && habits?.noLateEating === true) {
+      return 0;
+    }
+    return value ?? -1;
+  })();
+  const driftKeys = [lunch, afternoonSnack, dinner, nightSnack].filter((value) => value >= 3).length;
+  const roughKeys = [lunch, afternoonSnack, dinner, nightSnack].filter((value) => value >= 4).length;
+  if (dinner >= 4 || nightSnack >= 4 || roughKeys >= 2) {
+    return "rough_day";
+  }
+  if (driftKeys >= 2) {
+    return "stacked_drift";
+  }
+  if (nightSnack >= 3) {
+    return "night_snack_drift";
+  }
+  if (dinner >= 3) {
+    return "evening_drift";
+  }
+  if (afternoonSnack >= 3 && dinner <= 2 && nightSnack <= 2) {
+    return "afternoon_drift";
+  }
+  if ((lunch >= 3 || afternoonSnack >= 3) && dinner <= 2 && nightSnack <= 2) {
+    return "minor_drift";
+  }
+  return "controlled";
 }
 
 // Raw saved entries stay untouched. This helper translates each historical entry
@@ -2102,7 +2581,7 @@ function normalizeEntryForScoring(entry) {
     scoringModelVersion: CURRENT_SCORING_VERSION,
     normalizedSourceModel,
     normalizedMealBehavior,
-    normalizedFoodModel: "meal-v2",
+    normalizedFoodModel: "meal-v3",
     normalizedLegacyFoodAverage: rawLegacyFoodAverage,
   };
   normalizedEntry.mealBehavior = normalizedMealBehavior;
@@ -2190,7 +2669,7 @@ function renderFoodScoreGuide(compact = false) {
 function renderFoodLog() {
   const entry = getEntry(getSelectedDateKey());
   if (shouldUseMealV2UI(entry)) {
-    const preview = scoreFood({ ...entry, foodModel: "meal-v2", mealBehavior: readMealBehaviorForm(entry.mealBehavior) });
+    const preview = scoreFood({ ...entry, foodModel: "meal-v3", mealBehavior: readMealBehaviorForm(entry.mealBehavior) });
     foodLog.innerHTML = `
       ${renderFoodScoreGuide(false)}
       <div class="meal-behavior-grid">
@@ -2434,7 +2913,7 @@ function computeSummary() {
   const priorRuleEntries = [];
   normalizedEntries.forEach((entry) => {
     priorRuleEntries.push(scoreEntryV416Baseline(entry, { priorEntries: priorRuleEntries }));
-    loggedEntries.push(scoreEntryV417(entry, { priorEntries: loggedEntries }));
+    loggedEntries.push(scoreEntryV418(entry, { priorEntries: loggedEntries }));
   });
 
   const timelineFilled = buildFilledTimeline(loggedEntries);
@@ -2480,7 +2959,7 @@ function computeSummary() {
     eliteStreak,
     bestRegularStreak,
     bestEliteStreak,
-    today: scoreEntryV417(normalizeEntryForScoring(getDraftEntry()), {
+    today: scoreEntryV418(normalizeEntryForScoring(getDraftEntry()), {
       priorEntries: loggedEntries.filter((entry) => entry.date < getSelectedDateKey()),
     }),
     weekly,
@@ -2729,7 +3208,7 @@ function getQuestTemplate(questId) {
 }
 
 function getFoodMetricForQuest(entry) {
-  if (entry.foodModel === "meal-v2") {
+  if (isMealBehaviorEntry(entry)) {
     return entry.foodPerformanceScore ?? getMealBehaviorPerformanceScale(entry.nutritionScore ?? 0) ?? 0;
   }
   if (entry.foodModel === "structure-v1") {
@@ -2750,23 +3229,23 @@ function evaluateMiniQuest(template, entry, context) {
   const prior = context.priorEntries || [];
   switch (template.id) {
     case "hold-the-line":
-      return weekday === 5 && foodMetric >= 4 && (entry.foodModel === "meal-v2" ? Number(entry.mealBehavior?.snacks?.score ?? 99) <= 2 : isFoodStructureControlled(entry.foodStructure?.noNightEating));
+      return weekday === 5 && foodMetric >= 4 && (isMealBehaviorEntry(entry) ? Number(getMealScoreValue(entry, "nightSnack") ?? 99) <= 2 : isFoodStructureControlled(entry.foodStructure?.noNightEating));
     case "steady-saturday":
-      return weekday === 6 && foodMetric >= 4 && (entry.foodModel === "meal-v2" ? Number(entry.mealBehavior?.snacks?.score ?? 99) <= 2 : isFoodStructureControlled(entry.foodStructure?.noNightEating));
+      return weekday === 6 && foodMetric >= 4 && (isMealBehaviorEntry(entry) ? Number(getMealScoreValue(entry, "nightSnack") ?? 99) <= 2 : isFoodStructureControlled(entry.foodStructure?.noNightEating));
     case "stop-at-enough":
-      return entry.foodModel === "meal-v2"
-        ? Number(entry.mealBehavior?.dinner?.score ?? 99) <= 2 && Number(entry.mealBehavior?.snacks?.score ?? 99) <= 2
+      return isMealBehaviorEntry(entry)
+        ? Number(getMealScoreValue(entry, "dinner") ?? 99) <= 2 && Number(getMealScoreValue(entry, "nightSnack") ?? 99) <= 2
         : isFoodStructureControlled(entry.foodStructure?.dinnerPortionControlled) && isFoodStructureControlled(entry.foodStructure?.noNightEating);
     case "single-plate-rule":
-      return entry.foodModel === "meal-v2" ? Number(entry.mealBehavior?.dinner?.score ?? 99) <= 2 : isFoodStructureControlled(entry.foodStructure?.dinnerPortionControlled);
+      return isMealBehaviorEntry(entry) ? Number(getMealScoreValue(entry, "dinner") ?? 99) <= 2 : isFoodStructureControlled(entry.foodStructure?.dinnerPortionControlled);
     case "clean-afternoon":
-      return entry.foodModel === "meal-v2" ? Number(entry.mealBehavior?.snacks?.score ?? 99) <= 2 : isFoodStructureControlled(entry.foodStructure?.afternoonSnackControlled);
+      return isMealBehaviorEntry(entry) ? Number(getMealScoreValue(entry, "afternoonSnack") ?? 99) <= 2 : isFoodStructureControlled(entry.foodStructure?.afternoonSnackControlled);
     case "planned-fuel-only":
-      return entry.foodModel === "meal-v2"
-        ? Number(entry.mealBehavior?.snacks?.score ?? 99) <= 2
+      return isMealBehaviorEntry(entry)
+        ? Number(getMealScoreValue(entry, "afternoonSnack") ?? 99) <= 2 && Number(getMealScoreValue(entry, "nightSnack") ?? 99) <= 2
         : isFoodStructureControlled(entry.foodStructure?.afternoonSnackControlled) && isFoodStructureControlled(entry.foodStructure?.noNightEating);
     case "protein-anchor":
-      return entry.foodModel === "meal-v2"
+      return isMealBehaviorEntry(entry)
         ? ["breakfast", "lunch", "dinner"].every((key) => entry.mealBehavior?.[key]?.protein)
         : isFoodStructureControlled(entry.foodStructure?.breakfastControlled) && isFoodStructureControlled(entry.foodStructure?.lunchAnchorMeal) && isFoodStructureControlled(entry.foodStructure?.dinnerPortionControlled);
     case "lift-and-fuel":
@@ -2909,7 +3388,7 @@ function buildStorySummary(summary) {
 function getDraftEntry() {
   const dateKey = getSelectedDateKey();
   const existing = getEntry(dateKey);
-  const foodModel = existing.foodModel || (dateKey >= FOOD_MODEL_V2_DATE ? "meal-v2" : dateKey >= FOOD_SCORING_UPDATE_DATE ? "structure-v1" : "legacy");
+  const foodModel = existing.foodModel || (dateKey >= FOOD_MODEL_V3_DATE ? "meal-v3" : dateKey >= FOOD_MODEL_V2_DATE ? "meal-v2" : dateKey >= FOOD_SCORING_UPDATE_DATE ? "structure-v1" : "legacy");
   const activeCalories = parseOptionalNumber(document.getElementById("today-active-calories")?.value);
   const alcohol = document.getElementById("today-alcohol")?.value || existing.alcohol || "none";
   return {
@@ -2930,13 +3409,13 @@ function getDraftEntry() {
       foodStructureNote: foodModel === "structure-v1"
         ? (document.getElementById("today-food-structure-note")?.value || document.getElementById("food-structure-note")?.value || existing.foodStructureNote || "").trim().slice(0, 120)
         : existing.foodStructureNote || "",
-      mealBehaviorNote: foodModel === "meal-v2"
+      mealBehaviorNote: isMealBehaviorEntry({ foodModel })
         ? (document.getElementById("today-meal-behavior-note")?.value || existing.mealBehaviorNote || "").trim().slice(0, 120)
         : existing.mealBehaviorNote || "",
       foodModel,
       food: foodModel === "legacy" ? readFoodForm(existing.food) : existing.food,
       foodStructure: foodModel === "structure-v1" ? readFoodStructureForm(existing.foodStructure) : existing.foodStructure,
-      mealBehavior: foodModel === "meal-v2" ? readMealBehaviorForm(existing.mealBehavior) : existing.mealBehavior,
+      mealBehavior: isMealBehaviorEntry({ foodModel }) ? readMealBehaviorForm(existing.mealBehavior) : existing.mealBehavior,
     habits: {
       protein: Boolean(document.getElementById("today-habit-protein")?.checked),
       produce: Boolean(document.getElementById("today-habit-produce")?.checked),
@@ -2955,9 +3434,20 @@ function scoreFood(entry) {
     .map((item) => ({
       ...item,
       meal: mealBehavior[item.key] || {},
-      quality: getMealBehaviorQuality(mealBehavior[item.key] || {}),
+      quality: item.key === "nightSnack"
+        ? getNightSnackQuality(mealBehavior[item.key] || {}, entry.habits?.noLateEating)
+        : getMealBehaviorQuality(mealBehavior[item.key] || {}),
     }))
     .filter((item) => item.meal.score != null && item.quality != null);
+  const nightSnackImplicit = mealBehaviorItems.find((item) => item.key === "nightSnack");
+  const nightSnackQuality = getNightSnackQuality(mealBehavior.nightSnack || {}, entry.habits?.noLateEating);
+  if (mealBehavior.nightSnack?.score == null && entry.habits?.noLateEating === true && nightSnackImplicit && nightSnackQuality != null) {
+    loggedMeals.push({
+      ...nightSnackImplicit,
+      meal: mealBehavior.nightSnack || {},
+      quality: nightSnackQuality,
+    });
+  }
   const weightTotal = loggedMeals.reduce((sum, item) => sum + item.weight, 0);
   let nutritionScore = weightTotal
     ? loggedMeals.reduce((sum, item) => sum + (item.quality * item.weight), 0) / weightTotal
@@ -2966,7 +3456,9 @@ function scoreFood(entry) {
   const roughMeals = mealBehaviorItems.filter((item) => Number(mealBehavior[item.key]?.score) >= 4).length;
   const proteinAnchors = mealBehaviorItems.filter((item) => mealBehavior[item.key]?.protein).length;
   const dinnerScore = Number(mealBehavior.dinner?.score);
-  const snackScore = Number(mealBehavior.snacks?.score);
+  const lunchScore = Number(mealBehavior.lunch?.score);
+  const afternoonSnackScore = Number(mealBehavior.afternoonSnack?.score);
+  const nightSnackScore = getMealScoreValue(mealBehavior, "nightSnack");
   const alcoholPenalty = getAlcoholPenalty(entry.alcohol);
   if (severeMeals) {
     nutritionScore -= 12;
@@ -2974,20 +3466,37 @@ function scoreFood(entry) {
   if (roughMeals >= 2) {
     nutritionScore -= 10;
   }
-  if (dinnerScore >= 3) {
-    nutritionScore -= 4;
+  if (lunchScore >= 3) {
+    nutritionScore -= foodDriftPenalties.lunchDrift;
   }
-  if (snackScore >= 3) {
-    nutritionScore -= 3;
+  if (afternoonSnackScore >= 3) {
+    nutritionScore -= foodDriftPenalties.afternoonSnackDrift;
+  }
+  if (dinnerScore >= 3) {
+    nutritionScore -= foodDriftPenalties.dinnerDrift;
+  }
+  if ((nightSnackScore ?? -1) >= 3) {
+    nutritionScore -= foodDriftPenalties.nightSnackDrift;
+  }
+  if (lunchScore >= 4) {
+    nutritionScore -= foodDriftPenalties.lunchRough;
+  }
+  if (afternoonSnackScore >= 4) {
+    nutritionScore -= foodDriftPenalties.afternoonSnackRough;
   }
   if (dinnerScore >= 4) {
-    nutritionScore -= 4;
+    nutritionScore -= foodDriftPenalties.dinnerRough;
   }
-  if (snackScore >= 4) {
-    nutritionScore -= 3;
+  if ((nightSnackScore ?? -1) >= 4) {
+    nutritionScore -= foodDriftPenalties.nightSnackRough;
   }
-  if (dinnerScore >= 3 && snackScore >= 3) {
-    nutritionScore -= 4;
+  const driftCount = [lunchScore, afternoonSnackScore, dinnerScore, nightSnackScore].filter((value) => Number(value) >= 3).length;
+  const roughCount = [lunchScore, afternoonSnackScore, dinnerScore, nightSnackScore].filter((value) => Number(value) >= 4).length;
+  if (driftCount >= 2) {
+    nutritionScore -= foodDriftPenalties.multiDrift;
+  }
+  if (roughCount >= 2) {
+    nutritionScore -= foodDriftPenalties.roughStacking;
   }
   nutritionScore -= alcoholPenalty;
   nutritionScore = clampNumber(nutritionScore, 0, 100, 0);
@@ -3006,8 +3515,16 @@ function scoreFood(entry) {
     allMealsLogged,
     proteinAnchors,
     alcoholPenalty,
+    driftCount,
+    roughCount,
+    lunchScore: Number.isFinite(lunchScore) ? lunchScore : null,
+    afternoonSnackScore: Number.isFinite(afternoonSnackScore) ? afternoonSnackScore : null,
     dinnerScore: Number.isFinite(dinnerScore) ? dinnerScore : null,
-    snackScore: Number.isFinite(snackScore) ? snackScore : null,
+    snackScore: [afternoonSnackScore, nightSnackScore].filter((value) => Number.isFinite(value)).length
+      ? Math.max(afternoonSnackScore ?? -1, nightSnackScore ?? -1)
+      : null,
+    nightSnackScore: Number.isFinite(nightSnackScore) ? nightSnackScore : null,
+    foodDriftProfile: getFoodDriftProfile(mealBehavior, entry.habits),
     foodCoachingCopy: nutritionScore >= 85
       ? "Strong nutrition day. Keep living at a 1 or 2."
       : nutritionScore >= 70
@@ -3103,6 +3620,12 @@ function getMovementScoreFromCalories(activeCalories) {
 function getMovementScore(entry, stepPoints, exercisePoints) {
   const calorieScore = getMovementScoreFromCalories(entry.activeCalories);
   if (calorieScore != null) {
+    if (Number(entry.activeCalories || 0) < 400) {
+      const stepNormalized = scoringWeights.steps ? (stepPoints / scoringWeights.steps) * 100 : 0;
+      const exerciseNormalized = scoringWeights.exercise ? (exercisePoints / scoringWeights.exercise) * 100 : 0;
+      const fallbackBonus = Math.min(8, Math.round(((stepNormalized * 0.55) + (exerciseNormalized * 0.45)) * 0.08));
+      return Math.min(60, calorieScore + fallbackBonus);
+    }
     return calorieScore;
   }
   if (entry.habits?.movement === true) {
@@ -3114,6 +3637,29 @@ function getMovementScore(entry, stepPoints, exercisePoints) {
   const stepNormalized = scoringWeights.steps ? (stepPoints / scoringWeights.steps) * 100 : 0;
   const exerciseNormalized = scoringWeights.exercise ? (exercisePoints / scoringWeights.exercise) * 100 : 0;
   return Math.round((stepNormalized * 0.55) + (exerciseNormalized * 0.45));
+}
+
+function getRolling7StrengthConsistencyScore(dateKey) {
+  const end = new Date(`${dateKey}T12:00:00`);
+  const start = new Date(end);
+  start.setDate(start.getDate() - 6);
+  const sessions = state.strengthHistory.filter((session) => {
+    const date = new Date(`${session.date}T12:00:00`);
+    return date >= start && date <= end && (session.completed || session.awayWorkoutCompleted);
+  }).length;
+  if (!state.strengthHistory.length) {
+    return 70;
+  }
+  if (sessions >= 3) {
+    return 100;
+  }
+  if (sessions === 2) {
+    return 90;
+  }
+  if (sessions === 1) {
+    return 70;
+  }
+  return 35;
 }
 
 function getAlcoholPenalty(alcohol) {
@@ -3171,23 +3717,25 @@ function scoreBodyMetrics(entry, priorEntries = []) {
 
 function getStrengthDayScore(entry) {
   const session = getStrengthSessionForDate(entry.date);
-  const due = isStrengthDay(entry.date);
-  if (session?.completed) {
-    return 100;
+  const rolling7StrengthScore = getRolling7StrengthConsistencyScore(entry.date);
+  let dailySessionScore = null;
+  if (session?.awayWorkoutCompleted && session?.awayWorkout?.sourceKind === "home") {
+    dailySessionScore = 80;
+  } else if (session?.awayWorkoutCompleted) {
+    dailySessionScore = 85;
+  } else if (session?.completed) {
+    dailySessionScore = 100;
+  } else if (session?.unableToTrain && session?.unableReason) {
+    dailySessionScore = 70;
+  } else if (session && !session.completed) {
+    dailySessionScore = 65;
+  } else if (isStrengthDay(entry.date)) {
+    dailySessionScore = 45;
   }
-  if (session?.awayWorkoutCompleted) {
-    return 85;
+  if (dailySessionScore == null) {
+    return rolling7StrengthScore;
   }
-  if (session?.unableToTrain && session?.unableReason) {
-    return 70;
-  }
-  if (session && !session.completed) {
-    return 60;
-  }
-  if (due) {
-    return 45;
-  }
-  return 75;
+  return Math.max(dailySessionScore, rolling7StrengthScore);
 }
 
 function getConsistencyScore(entry, habitPoints, food) {
@@ -3328,7 +3876,7 @@ function scoreEntryV416Baseline(normalizedEntry, context = {}) {
   };
 }
 
-function scoreEntryV417(normalizedEntry, context = {}) {
+function scoreEntryV418(normalizedEntry, context = {}) {
   const entry = normalizedEntry;
   const dayMode = entry.mode || "full";
   const priorEntries = context.priorEntries || [];
@@ -3343,6 +3891,7 @@ function scoreEntryV417(normalizedEntry, context = {}) {
     ? food.nutritionScore
     : 0;
   const strengthScore = getStrengthDayScore(entry);
+  const rolling7StrengthScore = getRolling7StrengthConsistencyScore(entry.date);
   const consistencyScore = getConsistencyScore(entry, habitPoints, food);
   const provisionalRegion = computeRegionState(priorEntries, { progress: { workoutsThisWeek: [] } });
   const miniQuestState = dayMode === "full"
@@ -3374,6 +3923,7 @@ function scoreEntryV417(normalizedEntry, context = {}) {
     movementLabel,
     movementTier: entry.activeCalories != null ? getMovementTier(entry.activeCalories) : null,
     strengthScore,
+    rolling7StrengthScore,
     consistencyScore,
     dailyHealthScore,
     totalScore,
@@ -3389,7 +3939,7 @@ function scoreEntryV417(normalizedEntry, context = {}) {
 }
 
 function scoreDay(entry, context = {}) {
-  return scoreEntryV417(normalizeEntryForScoring(entry), context);
+  return scoreEntryV418(normalizeEntryForScoring(entry), context);
 }
 
 function getGoalBonus(entry, food) {
@@ -3399,14 +3949,14 @@ function getGoalBonus(entry, food) {
     (entry.exerciseMinutes || 0) > 0 ||
     entry.weight != null ||
     entry.bodyFat != null ||
-    (entry.foodModel === "meal-v2"
+    (isMealBehaviorEntry(entry)
       ? Object.values(entry.mealBehavior || {}).some((meal) => meal?.score != null)
       : entry.foodModel === "structure-v1"
         ? Object.values(entry.foodStructure || {}).some((value) => normalizeFoodStructureLevel(value) != null)
         : mealSlots.some((slot) => entry.food?.[slot] != null))
   );
   let bonus = hasMeaningfulLogging ? xpRules.baseLoggedDay : 0;
-  if (entry.foodModel === "meal-v2" && food.allMealsLogged) {
+  if (isMealBehaviorEntry(entry) && food.allMealsLogged) {
     bonus += xpRules.allMealsLogged;
   }
   if (getStrengthSessionForDate(entry.date)?.completed) {
@@ -3416,7 +3966,7 @@ function getGoalBonus(entry, food) {
   if ((entry.dailyHealthScore ?? 0) >= 80) {
     bonus += xpRules.highHealthScore;
   }
-  if (entry.foodModel === "meal-v2" && food.proteinAnchors >= 2 && Object.values(entry.mealBehavior || {}).every((meal) => meal?.score == null || meal.score <= 2)) {
+  if (isMealBehaviorEntry(entry) && food.proteinAnchors >= 2 && Object.values(entry.mealBehavior || {}).every((meal) => meal?.score == null || meal.score <= 2)) {
     bonus += xpRules.proteinBonus;
   }
   return bonus;
@@ -3565,6 +4115,32 @@ function getNextRecordedWeightPairs(loggedEntries, featureGetter, dayFilter = ()
   return pairs;
 }
 
+function getFutureWeightWindowPairs(loggedEntries, featureGetter, dayFilter = () => true, futureCount = 3) {
+  const pairs = [];
+  for (let index = 0; index < loggedEntries.length; index += 1) {
+    const current = loggedEntries[index];
+    if (!dayFilter(current) || current.weight == null) {
+      continue;
+    }
+    const feature = featureGetter(current);
+    if (feature == null) {
+      continue;
+    }
+    const futureWeights = loggedEntries
+      .slice(index + 1)
+      .filter((day) => day.weight != null)
+      .slice(0, futureCount);
+    if (futureWeights.length < 2) {
+      continue;
+    }
+    pairs.push({
+      feature,
+      nextDayWeightChange: average(futureWeights.map((day) => day.weight)) - current.weight,
+    });
+  }
+  return pairs;
+}
+
 function pearsonCorrelation(xValues, yValues) {
   if (xValues.length !== yValues.length || xValues.length < 2) {
     return null;
@@ -3592,39 +4168,61 @@ function pearsonCorrelation(xValues, yValues) {
 }
 
 function buildCorrelationInsight(loggedEntries) {
-  const recentEntries = loggedEntries.slice(-60);
-  const usableMealV2Days = recentEntries.filter((day) => day.normalizedSourceModel === "meal-v2");
-  if (usableMealV2Days.length < 14) {
+  const recentEntries = loggedEntries.slice(-90);
+  const mealBehaviorDays = recentEntries.filter((day) => ["meal-v2", "meal-v3"].includes(day.normalizedSourceModel));
+  const weightDays = recentEntries.filter((day) => day.weight != null);
+  if (recentEntries.length < 30 || mealBehaviorDays.length < 20 || weightDays.length < 14) {
     return null;
   }
   const metrics = [
-    { label: "nutrition score", betterDirection: "higher_better", getter: (day) => day.nutritionScore },
-    { label: "dinner control", betterDirection: "lower_better", getter: (day) => day.dinnerScore },
-    { label: "snack control", betterDirection: "lower_better", getter: (day) => day.snackScore },
-    { label: "active calories", betterDirection: "higher_better", getter: (day) => day.activeCalories },
-    { label: "exercise minutes", betterDirection: "higher_better", getter: (day) => day.exerciseMinutes },
-    { label: "total score", betterDirection: "higher_better", getter: (day) => day.totalScore },
+    { label: "Breakfast structure", betterDirection: "lower_better", getter: (day) => getMealScoreValue(day, "breakfast") },
+    { label: "Lunch structure", betterDirection: "lower_better", getter: (day) => getMealScoreValue(day, "lunch") },
+    { label: "Afternoon snack control", betterDirection: "lower_better", getter: (day) => getMealScoreValue(day, "afternoonSnack") },
+    { label: "Dinner control", betterDirection: "lower_better", getter: (day) => getMealScoreValue(day, "dinner") },
+    { label: "Night snacking", betterDirection: "lower_better", getter: (day) => getMealScoreValue(day, "nightSnack") },
+    { label: "Night snacking happened", betterDirection: "lower_better", getter: (day) => ((getMealScoreValue(day, "nightSnack") ?? null) > 0 ? 1 : 0) },
+    { label: "Night snacking rough", betterDirection: "lower_better", getter: (day) => ((getMealScoreValue(day, "nightSnack") ?? null) >= 4 ? 1 : 0) },
+    { label: "Drift count", betterDirection: "lower_better", getter: (day) => day.driftCount },
+    { label: "Rough count", betterDirection: "lower_better", getter: (day) => day.roughCount },
+    { label: "Strength consistency", betterDirection: "higher_better", getter: (day) => getRolling7StrengthConsistencyScore(day.date) },
+    { label: "Movement", betterDirection: "higher_better", getter: (day) => day.movementScore },
+    { label: "Exercise minutes", betterDirection: "higher_better", getter: (day) => day.exerciseMinutes },
+    { label: "Nutrition score", betterDirection: "higher_better", getter: (day) => day.nutritionScore },
+    { label: "Total score", betterDirection: "higher_better", getter: (day) => day.totalScore },
   ];
 
   const ranked = metrics.map((metric) => {
     const pairs = getNextRecordedWeightPairs(
       recentEntries,
       metric.getter,
-      (day) => day.normalizedSourceModel === "meal-v2"
+      (day) => ["meal-v2", "meal-v3"].includes(day.normalizedSourceModel)
     );
-    const correlation = pearsonCorrelation(
+    const futurePairs = getFutureWeightWindowPairs(
+      recentEntries,
+      metric.getter,
+      (day) => ["meal-v2", "meal-v3"].includes(day.normalizedSourceModel),
+      3
+    );
+    const correlationNext = pearsonCorrelation(
       pairs.map((pair) => pair.feature),
       pairs.map((pair) => pair.nextDayWeightChange)
     );
-    const helpfulness = correlation == null
+    const correlationFuture = pearsonCorrelation(
+      futurePairs.map((pair) => pair.feature),
+      futurePairs.map((pair) => pair.nextDayWeightChange)
+    );
+    const mergedCorrelation = correlationNext != null && correlationFuture != null
+      ? Number((((correlationNext * 0.6) + (correlationFuture * 0.4))).toFixed(3))
+      : correlationNext ?? correlationFuture;
+    const helpfulness = mergedCorrelation == null
       ? null
       : metric.betterDirection === "higher_better"
-        ? -correlation
-        : correlation;
+        ? -mergedCorrelation
+        : mergedCorrelation;
     return {
       ...metric,
-      usablePairs: pairs.length,
-      correlation,
+      usablePairs: Math.min(pairs.length, futurePairs.length || pairs.length),
+      correlation: mergedCorrelation,
       helpfulness,
     };
   }).filter((metric) => metric.correlation != null && metric.usablePairs >= 14);
@@ -3633,28 +4231,27 @@ function buildCorrelationInsight(loggedEntries) {
     return null;
   }
 
-  const top = [...ranked].sort((a, b) => (b.helpfulness ?? -Infinity) - (a.helpfulness ?? -Infinity));
-  const strongest = top[0];
-  const second = top[1];
+  const top = [...ranked].sort((a, b) => (b.helpfulness ?? -Infinity) - (a.helpfulness ?? -Infinity)).slice(0, 3);
+  const [strongest, second, third] = top;
   if ((strongest?.helpfulness ?? -Infinity) <= 0.08) {
     return {
       title: "Trend Driver",
       body: "Recent signal: the pattern is still mixed. Keep logging food, movement, and weigh-ins long enough for a clearer lever to separate itself.",
     };
   }
-  if (strongest.label === "dinner control") {
+  if (strongest.label === "Night snacking") {
     return {
       title: "Trend Driver",
-      body: "Recent signal: dinner control appears to be your strongest lever.",
+      body: "Recent signal: night snacking is your sharpest scale predictor.",
     };
   }
-  if (strongest.label === "snack control") {
+  if (strongest.label === "Dinner control") {
     return {
       title: "Trend Driver",
-      body: "Recent signal: snack control is showing up as a meaningful lever right now.",
+      body: "Recent signal: dinner control is your strongest evening lever.",
     };
   }
-  if (strongest.label === "nutrition score" && second?.label === "active calories" && (second.helpfulness ?? 0) > 0.04) {
+  if (strongest.label === "Nutrition score" && second?.label === "Movement" && (second.helpfulness ?? 0) > 0.04) {
     return {
       title: "Trend Driver",
       body: "Recent signal: movement is helping, but food control is currently the sharper lever.",
@@ -3662,7 +4259,7 @@ function buildCorrelationInsight(loggedEntries) {
   }
   return {
     title: "Trend Driver",
-    body: `Recent signal: ${strongest.label} is showing the clearest directional relationship with better near-term weigh-ins.`,
+    body: `Recent signal: ${strongest.label.toLowerCase()} appears associated with better near-term weigh-ins.${second && (second.helpfulness ?? 0) > 0.08 ? ` Secondary signal: ${second.label.toLowerCase()} also looks helpful.` : ""}${third && (third.helpfulness ?? 0) > 0.1 && third.label === "Strength consistency" ? " Secondary signal: strength consistency appears helpful." : ""}`,
   };
 }
 
@@ -3856,8 +4453,121 @@ function syncRewardMilestones(weekly) {
   }
 }
 
-function getWorkoutPlan() {
+function getWorkoutById(workoutId) {
+  return (state.strengthPlan?.workouts || defaultStrengthPlan.workouts).find((workout) => workout.id === workoutId) || null;
+}
+
+function getWorkoutPlan(workoutId = null) {
+  if (workoutId) {
+    return getWorkoutById(workoutId) || (state.strengthPlan?.workouts?.[0] || defaultStrengthPlan.workouts[0]);
+  }
   return state.strengthPlan?.workouts?.[0] || defaultStrengthPlan.workouts[0];
+}
+
+function getCompletedGymWorkoutsInWindow(days = 7, endDateKey = getTodayKey()) {
+  const end = new Date(`${endDateKey}T12:00:00`);
+  const start = new Date(end);
+  start.setDate(start.getDate() - (days - 1));
+  return state.strengthHistory.filter((session) => {
+    const date = new Date(`${session.date}T12:00:00`);
+    return session.completed && !session.awayWorkoutCompleted && date >= start && date <= end;
+  });
+}
+
+function getMostRecentCompletedWorkoutDate(workoutId, lookbackDays = 10, endDateKey = getTodayKey()) {
+  const end = new Date(`${endDateKey}T12:00:00`);
+  const start = new Date(end);
+  start.setDate(start.getDate() - (lookbackDays - 1));
+  const session = [...state.strengthHistory]
+    .filter((item) => {
+      const date = new Date(`${item.date}T12:00:00`);
+      return item.workoutId === workoutId && item.completed && !item.awayWorkoutCompleted && date >= start && date <= end;
+    })
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
+  return session?.date || null;
+}
+
+function getWorkoutCoverageStatus(dateRange = {}) {
+  const endDateKey = dateRange.endDateKey || getTodayKey();
+  const days = dateRange.days || 7;
+  const end = new Date(`${endDateKey}T12:00:00`);
+  const start = new Date(end);
+  start.setDate(start.getDate() - (days - 1));
+  const sessions = state.strengthHistory.filter((session) => {
+    const date = new Date(`${session.date}T12:00:00`);
+    return date >= start && date <= end && (session.completed || session.awayWorkoutCompleted);
+  });
+  const coverage = {
+    aCovered: false,
+    bCovered: false,
+    cCovered: false,
+    aByHome: false,
+    bByHome: false,
+    cByHome: false,
+    sessions,
+    message: "Use the matching home version. Do not let perfect beat done.",
+  };
+  for (const session of sessions) {
+    const coveredWorkoutId = session.awayWorkout?.sourceKind === "home"
+      ? session.awayWorkout?.correspondsToWorkoutId
+      : session.workoutId;
+    const byHome = session.awayWorkout?.sourceKind === "home" && session.awayWorkoutCompleted;
+    if (coveredWorkoutId === "workout-a") {
+      coverage.aCovered = true;
+      coverage.aByHome = coverage.aByHome || byHome;
+    } else if (coveredWorkoutId === "workout-b") {
+      coverage.bCovered = true;
+      coverage.bByHome = coverage.bByHome || byHome;
+    } else if (coveredWorkoutId === "workout-c") {
+      coverage.cCovered = true;
+      coverage.cByHome = coverage.cByHome || byHome;
+    }
+  }
+  if (coverage.aCovered && coverage.bCovered) {
+    coverage.message = "The important strength work is covered. C is optional.";
+  } else if (coverage.aCovered && !coverage.bCovered) {
+    coverage.message = "A is covered. B is the priority.";
+  } else if (coverage.bCovered && !coverage.aCovered) {
+    coverage.message = "B is covered. A is the priority.";
+  }
+  return coverage;
+}
+
+function getRecommendedWorkoutForDate(dateKey) {
+  const workouts = state.strengthPlan?.workouts || defaultStrengthPlan.workouts;
+  const workoutA = workouts.find((workout) => workout.id === "workout-a") || workouts[0];
+  const workoutB = workouts.find((workout) => workout.id === "workout-b") || workouts[1] || workouts[0];
+  const workoutC = workouts.find((workout) => workout.id === "workout-c") || workouts[2] || workouts[workouts.length - 1];
+  const recentGymWorkouts = getCompletedGymWorkoutsInWindow(7, dateKey);
+  const coverage = getWorkoutCoverageStatus({ endDateKey: dateKey, days: 7 });
+  const lastA = getMostRecentCompletedWorkoutDate(workoutA.id, 10, dateKey);
+  const lastB = getMostRecentCompletedWorkoutDate(workoutB.id, 10, dateKey);
+  const daysSinceB = lastB ? Math.round((new Date(`${dateKey}T12:00:00`).getTime() - new Date(`${lastB}T12:00:00`).getTime()) / 86400000) : Infinity;
+  let recommended = workoutA;
+  let label = `Recommended next: ${workoutA.name}`;
+  if (!getMostRecentCompletedWorkoutDate(workoutA.id, 7, dateKey)) {
+    recommended = workoutA;
+    label = `Recommended next: ${workoutA.name}`;
+  } else if (!getMostRecentCompletedWorkoutDate(workoutB.id, 7, dateKey)) {
+    recommended = workoutB;
+    label = `Recommended next: ${workoutB.name}`;
+  } else if (recentGymWorkouts.length < 3) {
+    recommended = workoutC;
+    label = `Bonus day: ${workoutC.name}`;
+  } else {
+    recommended = null;
+    label = "Recommended next: Recovery / away workout";
+  }
+  if (recentGymWorkouts.length === 1 && daysSinceB > 10) {
+    recommended = workoutB;
+    label = `Recommended next: ${workoutB.name}`;
+  }
+  return {
+    workout: recommended,
+    label,
+    sublabel: "If this is a two-workout week, A + B is the win. C is optional.",
+    coverage,
+  };
 }
 
 function slugifyExerciseName(name) {
@@ -3905,6 +4615,10 @@ function getStrengthSessionForDate(dateKey) {
   return state.strengthHistory.find((session) => session.date === dateKey) || null;
 }
 
+function getDerivedCompletedStrengthSet(set = {}) {
+  return Boolean(set.derivedCompleted || set.completed || set.weight || set.reps || set.seconds);
+}
+
 function getLastCompletedStrengthSession() {
   return [...state.strengthHistory].reverse().find((session) => session.completed) || null;
 }
@@ -3936,7 +4650,7 @@ function getLastCompletedExercisePerformance(name) {
 
 function formatCompletedExerciseSetSummary(exerciseName, actualSets = [], fallbackTarget = "") {
   const exerciseType = inferStrengthExerciseType(exerciseName, "weighted");
-  const populatedSets = actualSets.filter((set) => set.weight || set.reps);
+  const populatedSets = actualSets.filter((set) => set.weight || set.reps || set.seconds || getDerivedCompletedStrengthSet(set));
   if (!populatedSets.length) {
     return "";
   }
@@ -4082,11 +4796,12 @@ function getExerciseProgressionSuggestion(exercise) {
   }
 
   const lastSets = previous.exercise.actualSets || [];
-  const numericTarget = Number(exercise.repRange?.[0] || exercise.reps || 0);
-  const topRep = Number(exercise.repRange?.[1] || exercise.reps || numericTarget);
+  const numericTarget = Number(exercise.repRange?.[0] || exercise.targetReps || exercise.reps || 0);
+  const topRep = Number(exercise.repRange?.[1] || exercise.targetReps || exercise.reps || numericTarget);
   const allHitTarget = lastSets.length >= exercise.sets && lastSets.every((set) => Number(set.reps || 0) >= numericTarget);
   const allHitTop = lastSets.length >= exercise.sets && lastSets.every((set) => Number(set.reps || 0) >= topRep);
   const lastWeight = lastSets.find((set) => set.weight)?.weight || "";
+  const firstSetReps = Number(lastSets[0]?.reps || 0);
 
   const twoStableSessions = state.strengthHistory
     .filter((sessionItem) => sessionItem.completed)
@@ -4103,6 +4818,9 @@ function getExerciseProgressionSuggestion(exercise) {
     return backSensitive
       ? `You've earned a small progression signal. Keep ${lastWeight} and slow the tempo, or add 1 rep before increasing load.`
       : `You've earned a weight increase next session. Try ${lastWeight} + a small bump and restart at ${numericTarget} reps.`;
+  }
+  if (firstSetReps && firstSetReps < Math.max(1, numericTarget - 2) && lastWeight) {
+    return `Last result fell well under range. Consider dropping below ${lastWeight} next time or tightening form before pushing load.`;
   }
   if (allHitTarget) {
     return `Try ${lastWeight || "the same load"} for ${exercise.sets}x${numericTarget + 1} today.`;
@@ -4128,7 +4846,8 @@ function getExerciseStartingGuidance(exercise) {
 }
 
 function createStrengthSession(dateKey) {
-  const workout = getWorkoutPlan();
+  const recommended = getRecommendedWorkoutForDate(dateKey);
+  const workout = recommended.workout || getWorkoutPlan();
   return migrateStrengthSession({
     date: dateKey,
     workoutId: workout.id,
@@ -4163,6 +4882,7 @@ function createStrengthSession(dateKey) {
         weight: lastWeight || starter.prefillWeight,
         reps: "",
         completed: false,
+        derivedCompleted: false,
       }));
       return {
         name: exercise.name,
@@ -4364,7 +5084,7 @@ function computeStrengthTrendSummary(loggedEntries = [], weekly = null) {
         ? `Building bodyweight baseline from ${awayAnchor.toLowerCase()} work`
         : "Building bodyweight baseline";
     } else if (awayAnchor) {
-      supportNote = `Supported by away-from-gym ${awayAnchor.toLowerCase()} work`;
+      supportNote = `Supported by home / away ${awayAnchor.toLowerCase()} work`;
     }
     return {
       group,
@@ -4466,7 +5186,7 @@ function getKeyActions(summary) {
     actions.push("Hit movement goal");
   }
   if (summary.today.mode === "full") {
-    if (summary.today.foodModel === "meal-v2") {
+    if (isMealBehaviorEntry(summary.today)) {
       if ((summary.today.nutritionScore ?? 0) < 75) {
         actions.push("Stay at a 1");
       }
@@ -4482,7 +5202,7 @@ function getKeyActions(summary) {
 }
 
 function getFoodStatusSummary(day) {
-  if (day.foodModel === "meal-v2") {
+  if (isMealBehaviorEntry(day)) {
     const score = day.nutritionScore ?? 0;
     if (score >= 85) {
       return "On plan";
@@ -4573,6 +5293,87 @@ function handleStrengthPrimaryAction(summary, options = {}) {
   } else {
     render();
   }
+}
+
+function setStrengthWorkoutSelection(workoutId) {
+  const dateKey = getSelectedDateKey();
+  const workout = getWorkoutPlan(workoutId);
+  if (!workout) {
+    return;
+  }
+  const currentSession = getEditableStrengthSession();
+  if (currentSession.workoutId === workout.id) {
+    return;
+  }
+  state.meta.currentStrengthSession = createStrengthSession(dateKey);
+  state.meta.currentStrengthSession.workoutId = workout.id;
+  state.meta.currentStrengthSession.workoutName = workout.name;
+  state.meta.currentStrengthSession.exercises = migrateStrengthSession({
+    ...state.meta.currentStrengthSession,
+    workoutId: workout.id,
+    workoutName: workout.name,
+  }, state.strengthPlan).exercises;
+  saveState();
+  render();
+}
+
+function setHomeWorkoutSelection(workoutId) {
+  const dateKey = getSelectedDateKey();
+  const homeWorkout = getRecommendedHomeWorkoutForGymWorkout(workoutId);
+  if (!homeWorkout) {
+    return;
+  }
+  const session = getEditableStrengthSession();
+  session.awayWorkout = createHomeWorkoutFromTemplate(dateKey, homeWorkout);
+  session.awayWorkoutCompleted = false;
+  session.unableToTrain = false;
+  session.unableReason = "";
+  if (workoutId) {
+    const workout = getWorkoutPlan(workoutId);
+    session.workoutId = workout.id;
+    session.workoutName = workout.name;
+  }
+  state.meta.currentStrengthSession = session;
+  saveState();
+  render();
+  setStatus(`Loaded ${homeWorkout.name}. Good save. This counts as strength consistency.`);
+}
+
+function hasJune302026WorkoutSeed() {
+  return state.strengthHistory.some((session) => session.date === "2026-06-30" && session.workoutId === "workout-a");
+}
+
+function createJune302026WorkoutSeed() {
+  return migrateStrengthSession({
+    id: createId(),
+    date: "2026-06-30",
+    workoutId: "workout-a",
+    workoutName: "Workout A - Upper Push / Arms",
+    completed: true,
+    durationMinutes: 30,
+    note: "Seeded from the successful 2026-06-30 upper-body workout baseline.",
+    exercises: [
+      { name: "Dumbbell Bench Press", targetSets: 4, targetReps: "6-8", increaseNextTime: false, actualSets: [{ set: 1, weight: 37.5, reps: 8, completed: true }, { set: 2, weight: 37.5, reps: 8, completed: true }, { set: 3, weight: 37.5, reps: 7, completed: true }, { set: 4, weight: 37.5, reps: 6, completed: true }] },
+      { name: "Seated Dumbbell Shoulder Press", targetSets: 3, targetReps: "8-10", increaseNextTime: false, actualSets: [{ set: 1, weight: 22.5, reps: 10, completed: true }, { set: 2, weight: 22.5, reps: 10, completed: true }, { set: 3, weight: 22.5, reps: 8, completed: true }] },
+      { name: "Incline Dumbbell Press", targetSets: 3, targetReps: "6-10", increaseNextTime: false, actualSets: [{ set: 1, weight: 30, reps: 8, completed: true }, { set: 2, weight: 30, reps: 8, completed: true }, { set: 3, weight: 30, reps: 6, completed: true }] },
+      { name: "Lateral Raise", targetSets: 2, targetReps: "10-15", increaseNextTime: true, actualSets: [{ set: 1, weight: 10, reps: 15, completed: true }, { set: 2, weight: 10, reps: 14, completed: true }] },
+      { name: "Dumbbell Curl", targetSets: 2, targetReps: "8-12", increaseNextTime: true, actualSets: [{ set: 1, weight: 20, reps: 12, completed: true }, { set: 2, weight: 20, reps: 12, completed: true }] },
+      { name: "Overhead Dumbbell Triceps Extension", targetSets: 2, targetReps: "8-12", increaseNextTime: true, actualSets: [{ set: 1, weight: 25, reps: 12, completed: true }, { set: 2, weight: 25, reps: 12, completed: true }] },
+    ],
+  }, state.strengthPlan);
+}
+
+function seedJune302026Workout() {
+  if (hasJune302026WorkoutSeed()) {
+    setStatus("The 2026-06-30 Workout A seed is already in history.");
+    return;
+  }
+  const session = createJune302026WorkoutSeed();
+  state.strengthHistory = [...state.strengthHistory, session].sort((a, b) => a.date.localeCompare(b.date));
+  upsertStrengthLogsForSession(session);
+  saveState();
+  render();
+  setStatus("Seeded the 2026-06-30 Workout A baseline.");
 }
 
 function openExerciseHelp(helpSlug, alternateHelpSlug = null) {
@@ -4693,11 +5494,38 @@ function renderExerciseDemoMedia(entry) {
 }
 
 function getTodayBreakdownNote(day) {
-  if ((day.dinnerScore ?? 0) >= 3 || (day.snackScore ?? 0) >= 3) {
-    return "Evening drift is the main leak today.";
+  const driftProfile = day.foodDriftProfile || getFoodDriftProfile(day.mealBehavior || {}, day.habits || {});
+  if (driftProfile === "night_snack_drift") {
+    return "Night snacking is the main leak today. This is the pattern to watch.";
+  }
+  if (driftProfile === "evening_drift") {
+    return "Dinner drift showed up. Close the kitchen cleanly if you can.";
+  }
+  if (driftProfile === "afternoon_drift") {
+    return "Afternoon snack drift showed up. Plan the snack before hunger starts driving.";
+  }
+  if (driftProfile === "stacked_drift") {
+    return "Stacking showed up across the day. Tighten the next checkpoint instead of chasing perfection.";
+  }
+  if (driftProfile === "rough_day") {
+    return "This is a reset day nutritionally. Make tomorrow boring and controlled.";
+  }
+  if (driftProfile === "controlled") {
+    return "Food structure held today.";
   }
   if ((day.activeCalories ?? 0) >= 700 && (day.activeCalories ?? 0) <= 899) {
     return "Target hit. Extra movement still helps, but the bigger lever may be food control.";
+  }
+  if ((day.rolling7StrengthScore ?? getRolling7StrengthConsistencyScore(day.date)) < 70) {
+    return "Strength consistency is slipping. One 30-minute session gets the system back online.";
+  }
+  const recentGymWorkouts = getCompletedGymWorkoutsInWindow(7, day.date);
+  const completedIds = new Set(recentGymWorkouts.map((session) => session.workoutId));
+  if (recentGymWorkouts.length === 1) {
+    return "Next gym day should probably be Workout B unless A has also been missed.";
+  }
+  if (completedIds.has("workout-a") && completedIds.has("workout-b")) {
+    return "C is bonus territory. You already got the important work done this week.";
   }
   if (isStrengthDay(day.date) && getStrengthStatus(day.date) === "due" && (day.nutritionScore ?? 0) >= 70 && (day.movementScore ?? 0) >= 75) {
     return "Missed lift noted, but the day is still structurally strong. Reschedule rather than spiral.";
@@ -4726,13 +5554,13 @@ function renderTodayCard(summary) {
   const showingMealBehavior = shouldUseMealV2UI(today);
   const showingStructuredFood = !showingMealBehavior && shouldUseStructuredFoodUI(today);
   const mealBehavior = readMealBehaviorForm(today.mealBehavior);
-  const mealBehaviorPreview = scoreFood({ ...today, foodModel: "meal-v2", mealBehavior });
+  const mealBehaviorPreview = scoreFood({ ...today, foodModel: "meal-v3", mealBehavior });
   const structuredFood = readFoodStructureForm(today.foodStructure);
   const structuredPreview = scoreFood({ ...today, foodModel: "structure-v1", foodStructure: structuredFood });
-  const todayPreview = scoreEntryV417(
+  const todayPreview = scoreEntryV418(
     normalizeEntryForScoring({
       ...today,
-      foodModel: showingMealBehavior ? "meal-v2" : showingStructuredFood ? "structure-v1" : today.foodModel,
+      foodModel: showingMealBehavior ? "meal-v3" : showingStructuredFood ? "structure-v1" : today.foodModel,
       mealBehavior,
       foodStructure: structuredFood,
     }),
@@ -4826,8 +5654,9 @@ function renderTodayCard(summary) {
             <div class="today-meals">
               <div class="today-meals-header">
                 <span>Meal Structure</span>
-                <span class="today-meals-hint">1-2 is strong. 3 is drift. 4 is overfull. 5 is stuffed.</span>
+                <span class="today-meals-hint">1 is intentional. 2 is controlled. 3 is drift. 4 is overfull. 5 is stuffed.</span>
               </div>
+              <div class="strength-exercise-meta">For Night Snack, 0 means no night snack and counts as a win. Leave it blank only if the day is not finished yet.</div>
               ${renderFoodScoreGuide(true)}
               <div class="meal-behavior-grid compact">
                 ${mealBehaviorItems.map((item) => {
@@ -4842,7 +5671,7 @@ function renderTodayCard(summary) {
                         ${mealScoreOptions.map((option) => `
                           <label class="food-level-chip ${meal.score === option.value ? "active" : ""}">
                             <input type="radio" name="today-meal-score-${item.key}" value="${option.value}" ${meal.score === option.value ? "checked" : ""}>
-                            <span>${escapeHtml(option.value === 1 ? "Intentional" : option.value === 2 ? "Controlled" : option.value === 3 ? "Drift" : option.value === 4 ? "Overfull" : option.value === 5 ? "Stuffed" : "N/A")}</span>
+                            <span>${escapeHtml(option.value === 1 ? "Intentional" : option.value === 2 ? "Controlled" : option.value === 3 ? "Drift" : option.value === 4 ? "Overfull" : option.value === 5 ? "Stuffed" : item.key === "nightSnack" ? "None" : "N/A")}</span>
                           </label>
                         `).join("")}
                       </div>
@@ -5030,16 +5859,21 @@ function renderWeeklySummary(summary) {
   if (summary.weekly.latestHealth7 != null && summary.weekly.latestHealth7 >= 75) {
     guardrailMarkup.push(`<div class="guardrail-item">You are trending in the right direction. Recent health scores are holding above the steady threshold.</div>`);
   }
-  guardrailMarkup.push(`<div class="guardrail-item">Historical scores are being normalized with current scoring. Raw entries remain unchanged.</div>`);
+  guardrailMarkup.push(`<div class="guardrail-item">Current scoring version: ${CURRENT_SCORING_VERSION}</div>`);
+  guardrailMarkup.push(`<div class="guardrail-item">Historical entries are normalized to current scoring for comparison. Raw entries remain unchanged.</div>`);
   guardrailList.innerHTML = guardrailMarkup.join("");
 }
 
 function renderStrengthCard(summary) {
   const dateKey = getSelectedDateKey();
-  const workout = getWorkoutPlan();
+  const recommendedWorkout = getRecommendedWorkoutForDate(dateKey);
+  const recommendedHomeWorkout = getRecommendedHomeWorkoutForGymWorkout(recommendedWorkout.workout?.id);
+  const coverage = recommendedWorkout.coverage || getWorkoutCoverageStatus({ endDateKey: dateKey, days: 7 });
   const session = summary.strength.session;
+  const workout = getWorkoutPlan(session?.workoutId || recommendedWorkout.workout?.id);
   const awayWorkoutPlan = state.strengthPlan.awayWorkout || defaultStrengthPlan.awayWorkout;
   const sessionAwayWorkout = session?.awayWorkout || createDefaultAwayWorkout(dateKey, awayWorkoutPlan);
+  const homeWorkoutActive = sessionAwayWorkout.sourceKind === "home";
   const isDue = summary.strength.status === "due";
   const isInProgress = summary.strength.status === "in_progress";
   const isComplete = summary.strength.status === "complete";
@@ -5062,7 +5896,7 @@ function renderStrengthCard(summary) {
     ...workout.exercises.map((item) => item.name),
     ...finisherDefs.flatMap((finisher) => finisher.exercises.map((item) => item.name)),
   ]));
-  const awayAvailableOptions = awayWorkoutExerciseLibrary.filter((exercise) =>
+  const awayAvailableOptions = getSelectableAwayExerciseLibrary(sessionAwayWorkout).filter((exercise) =>
     !(sessionAwayWorkout.exercises || []).some((item) => normalizeExerciseKey(item.name) === normalizeExerciseKey(exercise.name))
   );
   const exercises = (session?.exercises || workout.exercises.map((exercise) => ({
@@ -5091,6 +5925,23 @@ function renderStrengthCard(summary) {
             ? `<button id="start-strength-session" type="button">${escapeHtml(strengthAction.label)}</button>`
             : `<button id="start-strength-session" type="button" class="secondary-button">${escapeHtml(strengthAction.label)}</button>`}
       </div>
+    </div>
+    <div class="strength-status-card">
+      <div class="today-focus-label">Recommended Next Workout</div>
+      <div class="strength-exercise-name">${escapeHtml(recommendedWorkout.label)}</div>
+      <div class="strength-exercise-meta">${escapeHtml(recommendedWorkout.sublabel)}</div>
+      ${recommendedHomeWorkout ? `<div class="strength-exercise-meta">Can't get to the gym? Do ${escapeHtml(recommendedHomeWorkout.name)} instead.</div>` : ""}
+      <div class="strength-workout-selector">
+        ${(state.strengthPlan.workouts || []).map((item) => `
+          <button type="button" class="secondary-button compact strength-workout-button ${item.id === workout.id ? "is-active" : ""}" data-strength-workout="${item.id}">
+            ${escapeHtml(item.id === "workout-c" ? `${item.name} (Bonus)` : `${item.name} (Priority)`)}
+          </button>
+        `).join("")}
+      </div>
+      <div class="strength-exercise-meta">${escapeHtml(`30 min estimate • two-day week target: ${getWorkoutPlan("workout-a")?.name || "Workout A"} + ${getWorkoutPlan("workout-b")?.name || "Workout B"}`)}</div>
+      ${recommendedHomeWorkout ? `<button type="button" class="secondary-button compact" data-home-workout="${escapeHtml(recommendedWorkout.workout?.id || "")}">Use Home Version</button>` : ""}
+      <div class="strength-exercise-meta">${escapeHtml(coverage.message)}</div>
+      ${!hasJune302026WorkoutSeed() ? `<button id="seed-workout-a" type="button" class="secondary-button compact">Seed 2026-06-30 Workout A baseline</button>` : ""}
     </div>
     <div class="strength-list">
       ${exercises.map((exercise, exerciseIndex) => `
@@ -5140,7 +5991,8 @@ function renderStrengthCard(summary) {
               ${lastCompleted
                 ? `<div class="strength-exercise-meta">Last complete workout (${escapeHtml(formatDisplayDate(lastCompleted.session.date))}): ${escapeHtml(lastCompletedSummary || "--")}${lastCompleted.exercise.increaseNextTime ? " • Marked to increase" : ""}</div>`
                 : `<div class="strength-exercise-meta">Last complete workout: --</div>`}
-              ${!last ? `<div class="strength-starting-meta">${escapeHtml(starter.summaryText)}</div>` : ""}
+              <div class="strength-starting-meta">Suggested start: ${escapeHtml(starter.weightText || String(exercise.startingWeight || "derive from history"))}${starter.weightText ? ` for ${escapeHtml(starter.repsText)}` : ""}</div>
+              ${exercise.kneeFriendlyAlternative ? `<div class="strength-safety-note">Knee-friendly alternative: ${escapeHtml(exercise.kneeFriendlyAlternative)}</div>` : ""}
               ${!last && helpEntry?.backSensitivityNote ? `<div class="strength-safety-note">${escapeHtml(helpEntry.backSensitivityNote)}</div>` : ""}
               <div class="strength-exercise-meta">${escapeHtml(getExerciseProgressionSuggestion(exercise))}</div>
             </div>
@@ -5224,8 +6076,9 @@ function renderStrengthCard(summary) {
       </div>
     </details>
     <div class="strength-status-card">
-      <div class="today-focus-label">Away from the Gym</div>
+      <div class="today-focus-label">${homeWorkoutActive ? "Home Version" : "Away from the Gym"}</div>
       <div class="strength-exercise-meta">${escapeHtml(sessionAwayWorkout.templateName || awayWorkoutPlan.templateName || "Momentum Strength Session")}</div>
+      ${homeWorkoutActive ? `<div class="strength-exercise-meta">Home version logged. This keeps the streak alive, but gym progression still resumes from your last gym numbers.</div>` : ""}
       <div class="quick-fields away-workout-meta">
         <label class="quick-field compact">
           <span>Date</span>
@@ -5244,16 +6097,17 @@ function renderStrengthCard(summary) {
           </select>
         </label>
       </div>
-      <div class="strength-exercise-meta">Bodyweight / band work counts here. Log it and it will support the same strength trends.</div>
+      <div class="strength-exercise-meta">${escapeHtml(homeWorkoutActive ? "Good save. This counts as strength consistency." : "Bodyweight / band work counts here. Log it and it will support the same strength trends.")}</div>
       <div class="away-workout-list">
         ${(sessionAwayWorkout.exercises || []).map((exercise, exerciseIndex) => {
           const definition = getStrengthExerciseDefinition(exercise.name);
           const isTimed = (exercise.exerciseType || definition?.type) === "timed";
           const isBand = (exercise.exerciseType || definition?.type) === "band";
           const lastAwayLog = (state.strengthLogs || [])
-            .filter((log) => log.source === "away_session" && normalizeExerciseKey(log.exercise) === normalizeExerciseKey(exercise.name))
+            .filter((log) => ["away_session", "home_session"].includes(log.source) && normalizeExerciseKey(log.exercise) === normalizeExerciseKey(exercise.name))
             .sort((a, b) => a.date.localeCompare(b.date))
             .slice(-1)[0];
+          const lastAwayTypeLabel = lastAwayLog?.source === "home_session" ? "home" : "away";
           const lastSummary = lastAwayLog
             ? formatStrengthLogSetSummary(exercise.name, lastAwayLog.sets || [], isBand ? (lastAwayLog.resistanceLevel || "light") : "")
             : "";
@@ -5263,7 +6117,7 @@ function renderStrengthCard(summary) {
                 <div>
                   <div class="strength-exercise-name">${escapeHtml(exercise.name)}</div>
                   <div class="strength-exercise-meta">Target ${escapeHtml(String(exercise.sets))} x ${escapeHtml(isTimed ? (exercise.targetSeconds || "--") : (exercise.targetReps || "--"))}</div>
-                  ${lastSummary ? `<div class="strength-exercise-meta">Last away workout (${escapeHtml(formatDisplayDate(lastAwayLog.date))}): ${escapeHtml(lastSummary)}</div>` : ""}
+                  ${lastSummary ? `<div class="strength-exercise-meta">Last ${escapeHtml(lastAwayTypeLabel)} workout (${escapeHtml(formatDisplayDate(lastAwayLog.date))}): ${escapeHtml(lastSummary)}</div>` : ""}
                 </div>
                 <button type="button" class="secondary-button compact away-remove-button" data-away-remove="${exerciseIndex}">Remove</button>
               </div>
@@ -5299,10 +6153,10 @@ function renderStrengthCard(summary) {
       </div>
       <label class="checkbox-row compact">
         <input id="away-workout-completed" type="checkbox" ${session?.awayWorkoutCompleted ? "checked" : ""}>
-        Completed Away Workout
+        ${homeWorkoutActive ? "Completed Home Workout" : "Completed Away Workout"}
       </label>
       <label class="quick-field quick-notes compact">
-        <span>Away notes</span>
+        <span>${homeWorkoutActive ? "Home notes" : "Away notes"}</span>
         <input id="away-workout-notes" data-away-field="notes" type="text" maxlength="160" value="${escapeHtml(sessionAwayWorkout.notes || "")}" placeholder="hotel gym, bands, short session">
       </label>
     </div>
@@ -5393,6 +6247,13 @@ function renderStrengthCard(summary) {
   for (const button of strengthCard.querySelectorAll(".exercise-help-trigger")) {
     button.addEventListener("click", () => openExerciseHelp(button.dataset.helpSlug, button.dataset.helpAlt || null));
   }
+  for (const button of strengthCard.querySelectorAll("[data-strength-workout]")) {
+    button.addEventListener("click", () => setStrengthWorkoutSelection(button.dataset.strengthWorkout));
+  }
+  for (const button of strengthCard.querySelectorAll("[data-home-workout]")) {
+    button.addEventListener("click", () => setHomeWorkoutSelection(button.dataset.homeWorkout));
+  }
+  document.getElementById("seed-workout-a")?.addEventListener("click", seedJune302026Workout);
   for (const input of strengthCard.querySelectorAll("[data-strength-exercise-flag]")) {
     input.addEventListener("change", handleStrengthIncreaseToggle);
   }
@@ -5688,7 +6549,8 @@ function addAwayWorkoutExercise() {
   session.awayWorkout = session.awayWorkout || createDefaultAwayWorkout(session.date);
   const select = document.getElementById("away-add-exercise");
   const selectedName = select?.value || "";
-  const definition = awayWorkoutExerciseLibrary.find((exercise) => normalizeExerciseKey(exercise.name) === normalizeExerciseKey(selectedName));
+  const definition = getSelectableAwayExerciseLibrary(session.awayWorkout)
+    .find((exercise) => normalizeExerciseKey(exercise.name) === normalizeExerciseKey(selectedName));
   if (!definition) {
     setStatus("Choose a movement to add.");
     return;
@@ -5830,11 +6692,16 @@ function saveStrengthSession() {
     const last = getLastExercisePerformance(exercise.name);
     const lastWeight = Number(last?.exercise?.actualSets?.find((set) => set.weight)?.weight || 0);
     const currentWeight = Number(exercise.actualSets.find((set) => set.weight)?.weight || 0);
-    const targetReps = Number(exercise.targetReps || 0);
-    const allSetsHit = exercise.actualSets.every((set) => Number(set.reps || 0) >= targetReps);
+    const targetReps = Number(Array.isArray(exercise.repRange) ? exercise.repRange[0] : exercise.targetReps || 0);
+    const normalizedSets = (exercise.actualSets || []).map((set) => ({
+      ...set,
+      derivedCompleted: getDerivedCompletedStrengthSet(set),
+    }));
+    const allSetsHit = normalizedSets.every((set) => Number(set.reps || 0) >= targetReps);
     return {
       ...exercise,
-      completed: exercise.actualSets.every((set) => set.completed || (set.weight || set.reps)),
+      actualSets: normalizedSets,
+      completed: normalizedSets.every((set) => getDerivedCompletedStrengthSet(set)),
       progressed: currentWeight > lastWeight || allSetsHit,
       pr: currentWeight > lastWeight,
       increaseNextTime: Boolean(exercise.increaseNextTime),
@@ -5856,6 +6723,7 @@ function saveStrengthSession() {
           weight,
           reps: repsCompleted,
           completed: true,
+          derivedCompleted: true,
         })),
       };
     });
@@ -5867,7 +6735,7 @@ function saveStrengthSession() {
       )),
     };
   });
-  const completedSets = session.exercises.flatMap((exercise) => exercise.actualSets).filter((set) => set.completed || set.weight || set.reps).length;
+  const completedSets = session.exercises.flatMap((exercise) => exercise.actualSets).filter((set) => getDerivedCompletedStrengthSet(set)).length;
   const totalSets = session.exercises.reduce((sum, exercise) => sum + exercise.actualSets.length, 0);
   session.completed = session.awayWorkoutCompleted || (totalSets ? completedSets / totalSets >= 0.75 : false);
   if (session.unableToTrain) {
@@ -5886,7 +6754,14 @@ function saveStrengthSession() {
   state.meta.currentStrengthSession = null;
   saveState();
   render();
-  setStatus(`Saved ${session.unableToTrain ? "unable-to-train status" : session.awayWorkoutCompleted ? "away workout" : "strength session"} for ${formatDisplayDate(session.date)}.${getSavedBackupSuffix()}`);
+  const saveLabel = session.unableToTrain
+    ? "unable-to-train status"
+    : session.awayWorkoutCompleted && session.awayWorkout?.sourceKind === "home"
+      ? "home version"
+      : session.awayWorkoutCompleted
+        ? "away workout"
+        : "strength session";
+  setStatus(`Saved ${saveLabel} for ${formatDisplayDate(session.date)}.${getSavedBackupSuffix()}`);
 }
 
 function buildSignals(loggedEntries, weekly, strengthSummary) {
@@ -5910,7 +6785,7 @@ function buildSignals(loggedEntries, weekly, strengthSummary) {
     }
   }
   const recentWarningDays = loggedEntries.slice(-5).filter((day) =>
-    day.foodModel === "meal-v2"
+    isMealBehaviorEntry(day)
       ? (day.nutritionScore ?? 100) < 55
       : day.foodModel === "structure-v1"
       ? (day.foodStructureScore ?? 0) <= 2
@@ -5918,6 +6793,10 @@ function buildSignals(loggedEntries, weekly, strengthSummary) {
   ).length;
   if (recentWarningDays >= 3) {
     signals.push("You've had three warning/off-track eating days in the last 5 days.");
+  }
+  const recentNightSnackDrift = loggedEntries.slice(-10).filter((day) => day.foodDriftProfile === "night_snack_drift").length;
+  if (recentNightSnackDrift >= 2) {
+    signals.push("Night snacking has shown up as a repeat leak recently.");
   }
   if (workoutsThisWeek >= 2) {
     signals.push("Strength consistency is improving.");
@@ -5940,7 +6819,7 @@ function isWinDay(day) {
 
 function getNoStuffedDays(days) {
   return days.filter((day) => {
-    if (day.foodModel === "meal-v2") {
+    if (isMealBehaviorEntry(day)) {
       return !Object.values(day.mealBehavior || {}).some((meal) => Number(meal?.score) >= 5);
     }
     if (day.foodModel === "structure-v1") {
@@ -5984,7 +6863,7 @@ function computeMomentumSummary(loggedEntries, weekly, strengthSummary) {
   const currentWinStreak = getCurrentWinStreak(completedDays);
   const workoutProgress = `${strengthSummary.progress.workoutsThisWeek.length}/${state.strengthSettings.daysPerWeek}`;
   const onTrackDaysWeek = recentWeek.filter((day) => (day.nutritionScore ?? 0) >= 70 || (day.foodStructureScore ?? 0) >= 4).length;
-  const mealLogsWeek = recentWeek.filter((day) => day.foodModel === "meal-v2" ? Object.values(day.mealBehavior || {}).every((meal) => meal?.score != null) : day.foodModel === "structure-v1" ? (day.answeredCheckpoints ?? 0) >= 5 : day.answeredMeals?.length >= 3).length;
+  const mealLogsWeek = recentWeek.filter((day) => isMealBehaviorEntry(day) ? Object.values(day.mealBehavior || {}).filter(Boolean).every((meal) => meal?.score != null) : day.foodModel === "structure-v1" ? (day.answeredCheckpoints ?? 0) >= 5 : day.answeredMeals?.length >= 3).length;
   const noStuffedDaysWeek = getNoStuffedDays(recentWeek);
   const weeklyMomentumScore = Math.round(
     (Math.min(1, currentWinStreak / 7) * 35) +
@@ -6031,7 +6910,7 @@ function buildWeeklyScorecard(loggedEntries, weekly, strengthSummary) {
   const currentRegion = computeRegionState(loggedEntries, strengthSummary).currentRegion;
   const recentBody = recentWeek.filter((day) => day.bodyFat != null);
   const recentWeights = recentWeek.filter((day) => day.weight != null);
-  const eatingDays = recentWeek.filter((day) => day.mode === "full" && (day.foodModel === "meal-v2" || day.foodModel === "structure-v1" || day.answeredMeals.length));
+  const eatingDays = recentWeek.filter((day) => day.mode === "full" && (isMealBehaviorEntry(day) || day.foodModel === "structure-v1" || day.answeredMeals.length));
   const eatingAverages = eatingDays.map((day) => getUnifiedFoodMetric(day)).filter((value) => value != null);
   const inControlDays = eatingDays.filter((day) => (getUnifiedFoodMetric(day) ?? 0) >= 3.8).length;
   const offTrackDays = eatingDays.filter((day) => (getUnifiedFoodMetric(day) ?? 5) <= 2.6).length;
@@ -6118,9 +6997,10 @@ function exportCsv(type) {
     rows = [[
       "date", "food_model", "morning", "lunch", "afternoon", "dinner", "other",
       "breakfast_score", "breakfast_confidence", "breakfast_protein",
-      "lunch_score_v2", "lunch_confidence", "lunch_protein",
+      "lunch_score", "lunch_confidence", "lunch_protein",
+      "afternoon_snack_score", "afternoon_snack_confidence", "afternoon_snack_protein",
       "dinner_score", "dinner_confidence", "dinner_protein",
-      "snacks_score", "snacks_confidence", "snacks_protein",
+      "night_snack_score", "night_snack_confidence", "night_snack_protein",
       "active_calories", "alcohol",
       "breakfast_controlled", "lunch_anchor_meal", "afternoon_snack_controlled", "dinner_portion_controlled", "no_night_eating",
       "food_structure_score", "nutrition_score", "daily_health_score", "food_note", "food_structure_note", "meal_behavior_note"
@@ -6139,12 +7019,15 @@ function exportCsv(type) {
         day.mealBehavior?.lunch?.score ?? "",
         day.mealBehavior?.lunch?.confidence ? 1 : 0,
         day.mealBehavior?.lunch?.protein ? 1 : 0,
+        day.mealBehavior?.afternoonSnack?.score ?? "",
+        day.mealBehavior?.afternoonSnack?.confidence ? 1 : 0,
+        day.mealBehavior?.afternoonSnack?.protein ? 1 : 0,
         day.mealBehavior?.dinner?.score ?? "",
         day.mealBehavior?.dinner?.confidence ? 1 : 0,
         day.mealBehavior?.dinner?.protein ? 1 : 0,
-        day.mealBehavior?.snacks?.score ?? "",
-        day.mealBehavior?.snacks?.confidence ? 1 : 0,
-        day.mealBehavior?.snacks?.protein ? 1 : 0,
+        day.mealBehavior?.nightSnack?.score ?? "",
+        day.mealBehavior?.nightSnack?.confidence ? 1 : 0,
+        day.mealBehavior?.nightSnack?.protein ? 1 : 0,
         day.activeCalories ?? "",
         day.alcohol || "",
         day.foodStructure?.breakfastControlled ?? "",
@@ -6295,11 +7178,14 @@ function renderLineChart(title, data, key, goal, movingAverageSeries = []) {
         <span>7-day avg: ${formatMaybe(seriesStats.currentAverage ?? currentAverage, decimals)}</span>
         <span>vs 7 days ago: ${formatSigned(change, decimals)}</span>
       </div>
+      <div class="chart-legend">
+        <span class="chart-legend-chip"><span class="chart-legend-line raw"></span>Daily readings</span>
+        <span class="chart-legend-chip"><span class="chart-legend-line trend"></span>Trend</span>
+      </div>
       <svg viewBox="0 0 ${width} ${height}" class="trend-chart" role="img" aria-label="${escapeHtml(title)} trend">
         <line x1="${padding}" y1="${goalY}" x2="${width - padding}" y2="${goalY}" class="goal-line"></line>
         <line x1="${padding}" y1="${chartBottom}" x2="${width - padding}" y2="${chartBottom}" class="axis-line"></line>
-        ${pointSegments.map((points) => `<polyline points="${points}" class="trend-line"></polyline>`).join("")}
-        ${movingAveragePoints ? `<polyline points="${movingAveragePoints}" class="trend-line trend-line-average"></polyline>` : ""}
+        ${pointSegments.map((points) => `<polyline points="${points}" class="trend-line trend-line-raw"></polyline>`).join("")}
         ${data.map((item) => {
           if (item[key] == null) {
             return "";
@@ -6308,6 +7194,7 @@ function renderLineChart(title, data, key, goal, movingAverageSeries = []) {
           const y = chartBottom - ((item[key] - min) / range) * (chartBottom - padding);
           return `<circle cx="${x}" cy="${y}" r="4" class="trend-point"></circle>`;
         }).join("")}
+        ${movingAveragePoints ? `<polyline points="${movingAveragePoints}" class="trend-line trend-line-trend"></polyline>` : ""}
         ${xTicks.map((tick) => `
           <g class="chart-x-tick">
             <line x1="${tick.x}" y1="${chartBottom}" x2="${tick.x}" y2="${chartBottom + 5}" class="axis-line"></line>
@@ -6315,6 +7202,7 @@ function renderLineChart(title, data, key, goal, movingAverageSeries = []) {
           </g>
         `).join("")}
       </svg>
+      <div class="chart-caption">Points are daily readings. Bold line is the smoothed trend.</div>
       <div class="chart-meta">Reference line: ${goal}</div>
     </div>
   `;
@@ -6393,7 +7281,13 @@ function renderStrengthTrendChart(summary, range = "all") {
         const y = chartBottom - ((point.value - min) / rangeValue) * (chartBottom - padding);
         return `${x},${y}`;
       });
-    return { ...item, points };
+    const trendPoints = buildRollingAverageSeries(item.data.filter((point) => point.value != null), "value", 3)
+      .map((point) => {
+        const x = getXForDate(point.date);
+        const y = chartBottom - ((point.value - min) / rangeValue) * (chartBottom - padding);
+        return `${x},${y}`;
+      });
+    return { ...item, points, trendPoints };
   });
   const pointMarkup = validSeries.map((item) => item.data.map((point) => {
     if (point.value == null) {
@@ -6407,13 +7301,18 @@ function renderStrengthTrendChart(summary, range = "all") {
   return `
     <details class="compact-details strength-trend-details">
       <summary>Strength Trend Lines</summary>
+      <div class="chart-legend">
+        <span class="chart-legend-chip"><span class="chart-legend-line raw"></span>Daily readings</span>
+        <span class="chart-legend-chip"><span class="chart-legend-line trend"></span>Trend</span>
+      </div>
       <div class="strength-trend-legend">
         ${validSeries.map((item) => `<span class="strength-legend-chip"><span class="strength-legend-swatch" style="background:${item.color}"></span>${escapeHtml(item.group)}</span>`).join("")}
       </div>
       <svg viewBox="0 0 ${width} ${height}" class="trend-chart" role="img" aria-label="Strength trend lines by muscle group">
         <line x1="${padding}" y1="${chartBottom}" x2="${width - padding}" y2="${chartBottom}" class="axis-line"></line>
-        ${polylines.map((item) => item.points.length >= 2 ? `<polyline points="${item.points.join(" ")}" class="trend-line strength-trend-line" style="stroke:${item.color}"></polyline>` : "").join("")}
+        ${polylines.map((item) => item.points.length >= 2 ? `<polyline points="${item.points.join(" ")}" class="trend-line trend-line-raw strength-trend-line strength-trend-line-raw" style="stroke:${item.color}"></polyline>` : "").join("")}
         ${pointMarkup}
+        ${polylines.map((item) => item.trendPoints.length >= 2 ? `<polyline points="${item.trendPoints.join(" ")}" class="trend-line trend-line-trend strength-trend-line" style="stroke:${item.color}"></polyline>` : "").join("")}
         ${xTicks.map((tick) => `
           <g class="chart-x-tick">
             <line x1="${tick.x}" y1="${chartBottom}" x2="${tick.x}" y2="${chartBottom + 5}" class="axis-line"></line>
@@ -6421,6 +7320,7 @@ function renderStrengthTrendChart(summary, range = "all") {
           </g>
         `).join("")}
       </svg>
+      <div class="chart-caption">Points are daily readings. Bold line is the smoothed trend.</div>
       <div class="chart-meta">Directional muscle-group strength trend across logged sessions.</div>
     </details>
   `;
@@ -6671,7 +7571,7 @@ function renderRecentDays(days) {
           <span class="metric-pill">${day.activeCalories != null ? `${day.activeCalories} active cal (${day.movementLabel || getMovementLabel(day.activeCalories, day.habits?.movement, day)})` : (day.movementLabel || getMovementLabel(day.activeCalories, day.habits?.movement, day))}</span>
           <span class="metric-pill">${day.steps || 0} steps</span>
           <span class="metric-pill">${day.exerciseMinutes || 0} min exercise</span>
-          ${day.mode === "full" ? `<span class="metric-pill">${day.foodModel === "meal-v2" ? `Nutrition ${formatMaybe(day.nutritionScore, 0)}/100` : day.foodModel === "structure-v1" ? `Food Structure ${day.foodStructureScore || 0}/5` : `Legacy Food ${day.foodPoints}/${scoringWeights.food.total}`}</span>` : ""}
+          ${day.mode === "full" ? `<span class="metric-pill">${isMealBehaviorEntry(day) ? `Nutrition ${formatMaybe(day.nutritionScore, 0)}/100` : day.foodModel === "structure-v1" ? `Food Structure ${day.foodStructureScore || 0}/5` : `Legacy Food ${day.foodPoints}/${scoringWeights.food.total}`}</span>` : ""}
           <span class="metric-pill">Health ${formatMaybe(day.dailyHealthScore ?? day.totalScore, 0)}</span>
           <span class="metric-pill">Habits ${day.habitPoints}/${Object.values(scoringWeights.habits).reduce((sum, value) => sum + value, 0)}</span>
           ${day.alcohol != null ? `<span class="metric-pill">Alcohol ${escapeHtml(alcoholOptions.find((option) => option.value === day.alcohol)?.label || day.alcohol)}</span>` : ""}

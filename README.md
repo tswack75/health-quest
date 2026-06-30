@@ -7,7 +7,7 @@ Health Quest is a local-first iPhone-friendly web app for manual daily health lo
 - Logs daily steps manually.
 - Logs exercise minutes manually.
 - Logs weight and body fat percentage manually.
-- Includes structured food logging for new entries using five daily checkpoints, while preserving legacy meal-scale food history.
+- Includes normalized food logging with the current meal-v3 model: breakfast, lunch, afternoon snack, dinner, and night snack, while preserving legacy meal-scale history.
 - Includes a personalized story engine with daily dispatches, level chapters, region progression, and mini-quests tied to real behavior.
 - Converts those into:
   - A daily score
@@ -21,6 +21,8 @@ Health Quest is a local-first iPhone-friendly web app for manual daily health lo
 - Includes a visible build version and export timestamp.
 - Uses a behavior-weighted scoring model that emphasizes steps, exercise, food structure/control, lighter body-metric bonuses, and now an integrated Strength module.
 - Includes a separate `Strength` tab with workout logging and tap-to-open exercise help sheets.
+- Includes matching Home A/B/C bodyweight versions for missed gym days, and they count toward strength consistency without replacing gym progression baselines.
+- Trend charts now show both raw daily points and a bolder smoothed trend line for easier reading.
 
 ## Important Apple Limitation
 
@@ -45,9 +47,13 @@ If you host this folder somewhere accessible from Safari:
 - Direct Apple HealthKit access requires a native iPhone app. This version is manual-entry by design.
 - Food scoring was updated on April 6, 2026 to a structured five-checkpoint model for new entries going forward. Older food entries remain intact and still appear in history, exports, and trends as legacy data.
 - Service worker install/offline support usually requires HTTP or HTTPS, not `file://`.
-- The installed PWA is versioned for GitHub Pages updates. New builds bump the visible app version, the manifest URL, the CSS/JS asset URLs, and the service-worker cache name so stale app-shell caches are cleared more reliably. This build is `v4.17.0`.
+- The installed PWA is versioned for GitHub Pages updates. New builds bump the visible app version, the manifest URL, the CSS/JS asset URLs, and the service-worker cache name so stale app-shell caches are cleared more reliably. This build is `v4.18.0`.
 
 - Current charts, summaries, XP, streaks, and trend signals are normalized through the active scoring layer instead of relying on older stored score outputs. Raw entries remain unchanged, and `meta.currentScoringVersion` tracks the active scoring rules in use.
+- v4.18.0 shifts more scoring weight toward food control, splits snacks into afternoon snack and night snack, and treats night-snack absence as a positive logged outcome when it is recorded intentionally.
+- The Strength tab now defaults to an A/B/C 30-minute gym plan, where A and B are the priority two-day-week targets and C is a bonus third day.
+- Matching Home A/B/C workouts can be loaded from the Recommended Next Workout card. They count as strength consistency and support strength trends, but gym progression still resumes from the last logged gym numbers.
+- Trend Driver now uses normalized scoring and recent directional signals to highlight likely levers such as dinner control, night snacking, and strength consistency without implying certainty or causation.
 
 - Strength logging now keeps a derived `strengthLogs` array alongside the existing workout/session history. It is used for muscle-group trend estimation, e1RM/bodyweight/timed scoring, and backward-compatible progress summaries without breaking older saved workouts.
 - The manifest `id` should stay stable so the installed app keeps the same identity and local data container across upgrades. Cache busting should come from asset URLs and the service worker, not from changing the app identity.
