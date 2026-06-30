@@ -1787,6 +1787,19 @@ button,
   gap: 8px;
 }
 
+.strength-picker-card .quick-field {
+  margin: 0;
+}
+
+.strength-picker-card select {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
 .strength-workout-button {
   display: grid;
   gap: 3px;

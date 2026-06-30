@@ -5948,6 +5948,16 @@ function renderStrengthCard(summary) {
       <div class="strength-picker-card">
         <div class="today-focus-label">Choose Gym Workout</div>
         <div class="strength-exercise-meta">Tap A, B, or C to load the exercises, suggested weights, target sets, and reps below.</div>
+        <label class="quick-field compact">
+          <span>Workout</span>
+          <select id="strength-workout-picker">
+            ${(state.strengthPlan.workouts || []).map((item) => `
+              <option value="${escapeHtml(item.id)}" ${item.id === workout.id ? "selected" : ""}>
+                ${escapeHtml(`${getStrengthWorkoutShortLabel(item.id)} - ${item.name}`)}
+              </option>
+            `).join("")}
+          </select>
+        </label>
         <div class="strength-workout-selector">
           ${(state.strengthPlan.workouts || []).map((item) => `
             <button type="button" class="secondary-button compact strength-workout-button ${item.id === workout.id ? "is-active" : ""}" data-strength-workout="${item.id}">
@@ -6270,6 +6280,9 @@ function renderStrengthCard(summary) {
   for (const button of strengthCard.querySelectorAll("[data-strength-workout]")) {
     button.addEventListener("click", () => setStrengthWorkoutSelection(button.dataset.strengthWorkout));
   }
+  document.getElementById("strength-workout-picker")?.addEventListener("change", (event) => {
+    setStrengthWorkoutSelection(event.target.value);
+  });
   for (const button of strengthCard.querySelectorAll("[data-home-workout]")) {
     button.addEventListener("click", () => setHomeWorkoutSelection(button.dataset.homeWorkout));
   }
